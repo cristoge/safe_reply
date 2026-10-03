@@ -17,7 +17,9 @@ from revision_rag.main import app
 # Base de datos solo para tests: el mismo Postgres de Docker, otra base de datos.
 # Se apunta DATABASE_URL a ella antes de que nada lea la configuración, así la
 # app y Alembic la usan sin cambiar nada de su código.
-TEST_DATABASE_URL = make_url(Settings().database_url).set(database="rag_test")
+TEST_DATABASE_URL = make_url(
+    Settings().database_url  # pyright: ignore[reportCallIssue]
+).set(database="rag_test")
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=False)
 get_settings.cache_clear()
 

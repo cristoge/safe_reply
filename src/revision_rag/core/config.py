@@ -13,4 +13,6 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    # Los campos los rellena pydantic-settings desde el entorno/.env; el type
+    # checker no lo sabe y cree que falta database_url.
+    return Settings()  # pyright: ignore[reportCallIssue]

@@ -1,12 +1,14 @@
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
+from revision_rag.api.routes import auth, users
 from revision_rag.core.config import get_settings
+from revision_rag.core.exceptions import AppError
 from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
 
 
@@ -27,6 +29,17 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
 
 
 app = FastAPI(title="revision-rag", lifespan=lifespan)
+
+
+@app.exception_handler(AppError)
+async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
+    # Traduce los errores de negocio a HTTP con el mismo formato que usa
+    # FastAPI en sus errores ({"detail": ...}).
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+
+
+app.include_router(auth.router, prefix="/api/v1")
+app.include_router(users.router, prefix="/api/v1")
 
 
 @app.get("/health")
