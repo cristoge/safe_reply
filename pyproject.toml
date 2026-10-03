@@ -23,3 +23,19 @@ revision-rag = "revision_rag:main"
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]
 build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "httpx>=0.28.1",
+    "pytest>=9.1.1",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Los tests y fixtures async no necesitan @pytest.mark.asyncio.
+asyncio_mode = "auto"
+# Un solo event loop para toda la sesión de tests: el engine (y su pool de
+# conexiones) se crea una vez y las conexiones van ligadas a ese loop.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"

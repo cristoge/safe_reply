@@ -1,23 +1,24 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.ext.asyncio import AsyncEngine, create_async_engine
 
 from revision_rag.core.config import get_settings
+from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
 
 
 @asynccontextmanager
-async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # Arranque: se crea el engine una sola vez y se comprueba la conexión.
     # Si la base de datos no responde, la app no llega a arrancar (fail fast).
-    engine = create_async_engine(get_settings().database_url, pool_pre_ping=True)
+    engine = build_engine(get_settings().database_url)
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))
     app.state.engine = engine
+    app.state.sessionmaker = build_sessionmaker(engine)
 
     yield
 
@@ -29,11 +30,9 @@ app = FastAPI(title="revision-rag", lifespan=lifespan)
 
 
 @app.get("/health")
-async def health(request: Request) -> JSONResponse:
-    engine: AsyncEngine = request.app.state.engine
+async def health(db: DbSession) -> JSONResponse:
     try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
     # Solo errores de conexión: un bug en el código no debe disfrazarse de "base de datos caída".
     except SQLAlchemyError, OSError:
         return JSONResponse(
