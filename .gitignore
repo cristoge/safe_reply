@@ -11,3 +11,6 @@ __pycache__/
 # Caché de herramientas
 .pytest_cache/
 .ruff_cache/
+
+# Archivos subidos (LocalStorage)
+data/

@@ -11,15 +11,18 @@ from typing import Annotated
 from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from revision_rag.clients.storage import LocalStorage, Storage
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import NotAuthenticatedError
 from revision_rag.db.session import DbSession
-from revision_rag.models import Project, User
+from revision_rag.models import Document, Project, User
+from revision_rag.repositories.document import DocumentRepository
 from revision_rag.repositories.project import ProjectRepository
 from revision_rag.repositories.refresh_token import RefreshTokenRepository
 from revision_rag.repositories.user import UserRepository
 from revision_rag.schemas.pagination import PaginationParams
 from revision_rag.services.auth import AuthService
+from revision_rag.services.document import DocumentService
 from revision_rag.services.project import ProjectService
 from revision_rag.services.user import UserService
 
@@ -28,6 +31,15 @@ SettingsDep = Annotated[Settings, Depends(get_settings)]
 # Solo lo usan las rutas que devuelven listas. Query(): los campos del modelo
 # se leen de la URL (?limit=5&offset=0) y en /docs salen como dos parámetros.
 Pagination = Annotated[PaginationParams, Query()]
+
+
+def get_storage(settings: SettingsDep) -> Storage:
+    # Aquí se decide qué Storage usa la app. Pasar a S3 = cambiar esta línea.
+    # En los tests se sustituye por un LocalStorage en una carpeta temporal.
+    return LocalStorage(settings.storage_dir)
+
+
+StorageDep = Annotated[Storage, Depends(get_storage)]
 
 
 def get_user_repository(db: DbSession) -> UserRepository:
@@ -85,11 +97,17 @@ def get_project_repository(db: DbSession) -> ProjectRepository:
     return ProjectRepository(db)
 
 
+def get_document_repository(db: DbSession) -> DocumentRepository:
+    return DocumentRepository(db)
+
+
 def get_project_service(
     db: DbSession,
     projects: Annotated[ProjectRepository, Depends(get_project_repository)],
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    storage: StorageDep,
 ) -> ProjectService:
-    return ProjectService(db, projects)
+    return ProjectService(db, projects, documents, storage)
 
 
 ProjectServiceDep = Annotated[ProjectService, Depends(get_project_service)]
@@ -107,3 +125,29 @@ async def get_owned_project(
 
 
 OwnedProject = Annotated[Project, Depends(get_owned_project)]
+
+
+def get_document_service(
+    db: DbSession,
+    documents: Annotated[DocumentRepository, Depends(get_document_repository)],
+    storage: StorageDep,
+    settings: SettingsDep,
+) -> DocumentService:
+    return DocumentService(db, documents, storage, settings)
+
+
+DocumentServiceDep = Annotated[DocumentService, Depends(get_document_service)]
+
+
+async def get_owned_document(
+    document_id: uuid.UUID, project: OwnedProject, service: DocumentServiceDep
+) -> Document:
+    """El documento de la URL, solo si es de ese proyecto (y el proyecto, tuyo).
+
+    Encadena con get_owned_project: primero se comprueba el proyecto y después
+    que el documento cuelgue de él. Un documento de otro proyecto → 404.
+    """
+    return await service.get(project, document_id)
+
+
+OwnedDocument = Annotated[Document, Depends(get_owned_document)]

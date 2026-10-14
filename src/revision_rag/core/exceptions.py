@@ -12,6 +12,13 @@ class AppError(Exception):
     detail: str = "Petición no válida"
     headers: ClassVar[dict[str, str] | None] = None
 
+    def __init__(self, detail: str | None = None) -> None:
+        # El mensaje de la clase vale para casi todo; se puede dar uno concreto
+        # cuando el mismo error tiene varias causas (p. ej. InvalidFileError).
+        if detail is not None:
+            self.detail = detail
+        super().__init__(self.detail)
+
 
 class EmailAlreadyRegisteredError(AppError):
     status_code = 409
@@ -41,3 +48,24 @@ class InvalidRefreshTokenError(AppError):
 class ProjectNotFoundError(AppError):
     status_code = 404
     detail = "Proyecto no encontrado"
+
+
+class DocumentNotFoundError(AppError):
+    status_code = 404
+    detail = "Documento no encontrado"
+
+
+class UnsupportedFileTypeError(AppError):
+    status_code = 415
+    detail = "Tipo de archivo no soportado: solo .pdf y .md"
+
+
+class FileTooLargeError(AppError):
+    status_code = 413
+    detail = "El archivo es demasiado grande"
+
+
+class InvalidFileError(AppError):
+    # La extensión es válida pero el contenido no cuadra con ella.
+    status_code = 422
+    detail = "El archivo no es válido"
