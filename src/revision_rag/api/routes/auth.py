@@ -1,8 +1,13 @@
 from fastapi import APIRouter, status
 
 from revision_rag.api.deps import AuthServiceDep
-from revision_rag.core.exceptions import EmailAlreadyRegisteredError
+from revision_rag.core.exceptions import (
+    EmailAlreadyRegisteredError,
+    InvalidCredentialsError,
+    InvalidRefreshTokenError,
+)
 from revision_rag.models import User
+from revision_rag.schemas.auth import LoginRequest, RefreshRequest, TokenResponse
 from revision_rag.schemas.user import UserCreate, UserRead
 
 router = APIRouter(prefix="/auth", tags=["auth"])
@@ -22,3 +27,32 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 )
 async def register(data: UserCreate, service: AuthServiceDep) -> User:
     return await service.register(data)
+
+
+@router.post(
+    "/login",
+    responses={
+        InvalidCredentialsError.status_code: {
+            "description": InvalidCredentialsError.detail
+        }
+    },
+)
+async def login(data: LoginRequest, service: AuthServiceDep) -> TokenResponse:
+    return await service.login(data)
+
+
+@router.post(
+    "/refresh",
+    responses={
+        InvalidRefreshTokenError.status_code: {
+            "description": InvalidRefreshTokenError.detail
+        }
+    },
+)
+async def refresh(data: RefreshRequest, service: AuthServiceDep) -> TokenResponse:
+    return await service.refresh(data.refresh_token)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+async def logout(data: RefreshRequest, service: AuthServiceDep) -> None:
+    await service.logout(data.refresh_token)

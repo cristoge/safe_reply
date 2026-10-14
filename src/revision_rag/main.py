@@ -7,8 +7,8 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from revision_rag.api.routes import auth, users
-from revision_rag.core.config import get_settings
+from revision_rag.api.routes import auth, projects, users
+from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import AppError
 from revision_rag.db.cache import RedisClient, build_redis
 from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
@@ -43,11 +43,21 @@ app = FastAPI(title="revision-rag", lifespan=lifespan)
 async def handle_app_error(request: Request, exc: AppError) -> JSONResponse:
     # Traduce los errores de negocio a HTTP con el mismo formato que usa
     # FastAPI en sus errores ({"detail": ...}).
-    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
+    return JSONResponse(
+        status_code=exc.status_code, content={"detail": exc.detail}, headers=exc.headers
+    )
 
 
-app.include_router(auth.router, prefix="/api/v1")
-app.include_router(users.router, prefix="/api/v1")
+def include_routers(app: FastAPI, settings: Settings) -> None:
+    app.include_router(auth.router, prefix="/api/v1")
+    app.include_router(users.router, prefix="/api/v1")
+    app.include_router(projects.router, prefix="/api/v1")
+    # Rutas solo para desarrollo: en producción no existen (404 y fuera de /docs).
+    if settings.environment == "development":
+        app.include_router(users.dev_router, prefix="/api/v1")
+
+
+include_routers(app, get_settings())
 
 
 @app.get("/health")

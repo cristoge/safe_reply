@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Any, ClassVar
 
 from sqlalchemy import DateTime, MetaData, func
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -28,3 +29,9 @@ class TimestampMixin(CreatedAtMixin):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+
+    # El valor de updated_at lo calcula Postgres (func.now()) en cada UPDATE.
+    # Sin esto, SQLAlchemy no lo conoce y lo deja caducado: leerlo después del
+    # commit intentaría recargarlo, y en async eso da MissingGreenlet. Con
+    # eager_defaults lo recoge en el mismo UPDATE (RETURNING), sin otra consulta.
+    __mapper_args__: ClassVar[dict[str, Any]] = {"eager_defaults": True}
