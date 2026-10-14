@@ -2,25 +2,33 @@ import asyncio
 import os
 from collections.abc import AsyncIterator
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from httpx import ASGITransport, AsyncClient
+from redis.asyncio import Redis
 from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
 from revision_rag.core.config import Settings, get_settings
+from revision_rag.db.cache import build_redis, get_redis
 from revision_rag.db.session import get_db
 from revision_rag.main import app
+
+_settings = Settings()  # pyright: ignore[reportCallIssue]
 
 # Base de datos solo para tests: el mismo Postgres de Docker, otra base de datos.
 # Se apunta DATABASE_URL a ella antes de que nada lea la configuración, así la
 # app y Alembic la usan sin cambiar nada de su código.
-TEST_DATABASE_URL = make_url(
-    Settings().database_url  # pyright: ignore[reportCallIssue]
-).set(database="rag_test")
+TEST_DATABASE_URL = make_url(_settings.database_url).set(database="rag_test")
 os.environ["DATABASE_URL"] = TEST_DATABASE_URL.render_as_string(hide_password=False)
+
+# Lo mismo con Redis, cuyas bases de datos no tienen nombre sino número (0-15):
+# la de desarrollo es la 0 y la de tests la 1.
+TEST_REDIS_URL = urlsplit(_settings.redis_url)._replace(path="/1").geturl()
+os.environ["REDIS_URL"] = TEST_REDIS_URL
 get_settings.cache_clear()
 
 ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
@@ -82,14 +90,32 @@ async def db_session(engine: AsyncEngine) -> AsyncIterator[AsyncSession]:
         await transaction.rollback()
 
 
+@pytest.fixture(scope="session")
+async def redis_client() -> AsyncIterator[Redis]:
+    client = build_redis(TEST_REDIS_URL)
+    yield client
+    await client.aclose()
+
+
 @pytest.fixture
-async def client(db_session: AsyncSession) -> AsyncIterator[AsyncClient]:
-    """Cliente HTTP contra la app, sin levantar servidor, usando la sesión del test."""
+async def redis(redis_client: Redis) -> Redis:
+    """Cada test empieza con Redis vacío. FLUSHDB solo borra la base de datos 1."""
+    await redis_client.flushdb()
+    return redis_client
+
+
+@pytest.fixture
+async def client(db_session: AsyncSession, redis: Redis) -> AsyncIterator[AsyncClient]:
+    """Cliente HTTP contra la app, sin levantar servidor, con la sesión y el Redis del test."""
 
     async def override_get_db() -> AsyncIterator[AsyncSession]:
         yield db_session
 
+    def override_get_redis() -> Redis:
+        return redis
+
     app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[get_redis] = override_get_redis
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client
