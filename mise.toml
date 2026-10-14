@@ -1,0 +1,22 @@
+# Herramientas y tareas del proyecto. Primera vez: `mise trust` y `mise install`.
+# Ver las tareas: `mise tasks`.
+
+[tools]
+# La misma versión que .python-version (la que usa uv).
+python = "3.14"
+# Exacta: el build backend del pyproject pide uv_build >=0.12.23,<0.13.0.
+uv = "0.12.23"
+
+[tasks."docker:up"]
+description = "Levanta Postgres y Redis y espera a que estén healthy"
+run = "docker compose up -d --wait"
+
+[tasks."docker:down"]
+description = "Para y borra los contenedores (los datos siguen en los volúmenes)"
+run = "docker compose down"
+
+[tasks.fastapi]
+description = "Arranca la API con recarga automática (levanta Docker antes)"
+# Sin Postgres y Redis la app no arranca (fail fast en el lifespan).
+depends = ["docker:up"]
+run = "uv run uvicorn revision_rag.main:app --reload"
