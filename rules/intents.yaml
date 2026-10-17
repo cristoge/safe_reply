@@ -1,0 +1,455 @@
+# Reglas de negocio del sistema de tickets (apartado 5 del diseño).
+#
+# Fuera del código y de la BD: cambiar una regla = cambiar este fichero (queda en
+# Git con su motivo). Los tickets guardan el RESULTADO de aplicarlas en su momento.
+#
+# Por intención:
+#   ticket_type     capítulo del manual en el que busca el RAG
+#   priority        low | medium | high (prioridad base; la urgencia puede subirla)
+#   route           ai | human ("human" = siempre persona, sin LLM)
+#   answer_mode     rag | canned (solo con route: ai) · canned = respuesta predefinida
+#   min_confidence  opcional: umbral propio, más exigente que el general
+#   reason          obligatorio con route: human → acaba en route_reason
+
+# Elegido con ml/compare_models.py y ml/robustness.py (2026-10-17, test de Banking77):
+# 0 tickets de persona se cuelan · la IA responde el 45 % (20 % con predefinidas) ·
+# 0 de 40 mensajes fuera de ámbito van a la IA. Con min_confidence 0.7 la IA respondería
+# el 51 %, pero también el 12.5 % de las preguntas de banca que no conoce (0.8: 9.7 %).
+router:
+  min_confidence: 0.8 # por debajo → persona ("low confidence")
+  max_p_human: 0.1 # P(persona) ≥ esto → persona ("ambiguous with sensitive intent")
+  canned_min_confidence: 0.9 # las predefinidas exigen más: el juez no las protege
+
+# Red de seguridad (regla 0 del router): si el texto encaja con alguna, va a persona
+# aunque el modelo prediga una intención de IA. Para tickets con dos problemas
+# ("my card might be compromised, can I get a virtual card?") en los que el modelo
+# está seguro de la intención inocente. Expresiones regulares, sin distinguir mayúsculas.
+# Medido en el test de Banking77: solo 2 llamadas de más en 3080 tickets.
+sensitive_patterns:
+  - '\bstolen\b'
+  - '\bcompromised\b'
+  - '\bfraud'
+  - '\bhack(?:ed|er|ers)?\b'
+  - '\bscam'
+  - "\\b(?:not|wasn'?t|was not) me\\b"
+  - '\bnot mine\b'
+  - "\\b(?:didn'?t|did not|never) (?:make|made|authori[sz]e|do)\\b"
+  - '\bunauthori[sz]ed\b'
+  - "\\b(?:don'?t|do not|didn'?t|did not) recogni[sz]e\\b"
+  - '\bsomeone (?:else )?(?:used|took|made|withdrew|has used|is using|stole)\b'
+  - "\\b(?:transfer|money|payment)\\b.{0,40}\\b(?:never arrived|hasn'?t arrived|has not arrived|not arrived|didn'?t arrive|not received|never received|hasn'?t received)\\b"
+
+# Plazo para atender un ticket que va a persona (tickets.due_at), en horas
+due_hours:
+  high: 1
+  medium: 4
+  low: 24
+
+intents:
+  # --- 1. Seguridad y fraude: siempre persona, prioridad alta ---------------
+  lost_or_stolen_card:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible fraud
+  compromised_card:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible fraud
+  lost_or_stolen_phone:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible account takeover
+  card_payment_not_recognised:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible fraud
+  cash_withdrawal_not_recognised:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible fraud
+  direct_debit_payment_not_recognised:
+    ticket_type: security_and_fraud
+    priority: high
+    route: human
+    reason: possible fraud
+
+  # --- 2. Cobros incorrectos y reembolsos: siempre persona ------------------
+  # high = al cliente le falta dinero ahora · medium = discusión sobre un importe
+  transaction_charged_twice:
+    ticket_type: wrong_charges_and_refunds
+    priority: high
+    route: human
+    reason: money taken twice
+  extra_charge_on_statement:
+    ticket_type: wrong_charges_and_refunds
+    priority: high
+    route: human
+    reason: unexpected charge
+  wrong_amount_of_cash_received:
+    ticket_type: wrong_charges_and_refunds
+    priority: high
+    route: human
+    reason: money missing at ATM
+  request_refund:
+    ticket_type: wrong_charges_and_refunds
+    priority: medium
+    route: human
+    reason: refund decision
+  Refund_not_showing_up:
+    ticket_type: wrong_charges_and_refunds
+    priority: medium
+    route: human
+    reason: refund in progress
+  reverted_card_payment?:
+    ticket_type: wrong_charges_and_refunds
+    priority: medium
+    route: human
+    reason: payment reverted
+  card_payment_wrong_exchange_rate:
+    ticket_type: wrong_charges_and_refunds
+    priority: medium
+    route: human
+    reason: disputed amount
+  wrong_exchange_rate_for_cash_withdrawal:
+    ticket_type: wrong_charges_and_refunds
+    priority: medium
+    route: human
+    reason: disputed amount
+
+  # --- 3. Tarjetas: pedido, envío y activación (baja, IA) --------------------
+  activate_my_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: rag
+  card_arrival:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: rag # "no me ha llegado" depende de cuándo la pidió → no predefinida
+  card_delivery_estimate:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+    min_confidence: 0.95 # se confunde con card_arrival (16 errores en CV)
+  card_about_to_expire:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  get_physical_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  order_physical_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  getting_spare_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  getting_virtual_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+    min_confidence: 0.95 # la predefinida con más fallos (se confunde con disposable y order_physical)
+  get_disposable_virtual_card:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  disposable_card_limits:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  card_linking:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: rag
+  apple_pay_or_google_pay:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  supported_cards_and_currencies:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+  visa_or_mastercard:
+    ticket_type: cards_ordering_and_activation
+    priority: low
+    route: ai
+    answer_mode: canned
+
+  # --- 4. Tarjetas: problemas de uso (media, IA) -----------------------------
+  card_not_working:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  virtual_card_not_working:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  contactless_not_working:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  declined_card_payment:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  card_acceptance:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  card_swallowed:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  pin_blocked:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  change_pin:
+    ticket_type: cards_usage_problems
+    priority: low # "cómo se hace", no hay ningún problema (excepción al "media" del tipo)
+    route: ai
+    answer_mode: canned
+  pending_card_payment:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+  card_payment_fee_charged:
+    ticket_type: cards_usage_problems
+    priority: medium
+    route: ai
+    answer_mode: rag
+
+  # --- 5. Cajeros y efectivo (media, IA) -------------------------------------
+  atm_support:
+    ticket_type: atms_and_cash
+    priority: low # dónde y cómo sacar dinero: informativa
+    route: ai
+    answer_mode: canned
+  declined_cash_withdrawal:
+    ticket_type: atms_and_cash
+    priority: medium
+    route: ai
+    answer_mode: rag
+  pending_cash_withdrawal:
+    ticket_type: atms_and_cash
+    priority: medium
+    route: ai
+    answer_mode: rag
+  cash_withdrawal_charge:
+    ticket_type: atms_and_cash
+    priority: medium
+    route: ai
+    answer_mode: rag
+
+  # --- 6. Transferencias (media, IA salvo excepciones) -----------------------
+  cancel_transfer:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+  declined_transfer:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+  failed_transfer:
+    ticket_type: transfers
+    priority: medium
+    route: human
+    reason: possible lost money
+  pending_transfer:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+  transfer_timing:
+    ticket_type: transfers
+    priority: low # cuánto tarda: informativa
+    route: ai
+    answer_mode: canned
+  transfer_fee_charged:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+  transfer_into_account:
+    ticket_type: transfers
+    priority: low # cómo recibir dinero: informativa
+    route: ai
+    answer_mode: canned
+  transfer_not_received_by_recipient:
+    ticket_type: transfers
+    priority: medium
+    route: human
+    reason: possible lost money
+  receiving_money:
+    ticket_type: transfers
+    priority: low
+    route: ai
+    answer_mode: canned
+  beneficiary_not_allowed:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+  balance_not_updated_after_bank_transfer:
+    ticket_type: transfers
+    priority: medium
+    route: ai
+    answer_mode: rag
+
+  # --- 7. Recargas: baja si es informativa, media si algo ha fallado ----------
+  automatic_top_up:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  pending_top_up:
+    ticket_type: top_ups
+    priority: medium
+    route: ai
+    answer_mode: rag
+  top_up_by_bank_transfer_charge:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  top_up_by_card_charge:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  top_up_by_cash_or_cheque:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  top_up_failed:
+    ticket_type: top_ups
+    priority: medium
+    route: ai
+    answer_mode: rag
+  top_up_limits:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  top_up_reverted:
+    ticket_type: top_ups
+    priority: medium
+    route: ai
+    answer_mode: rag
+  topping_up_by_card:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: canned
+  verify_top_up:
+    ticket_type: top_ups
+    priority: low
+    route: ai
+    answer_mode: rag
+  balance_not_updated_after_cheque_or_cash_deposit:
+    ticket_type: top_ups
+    priority: medium
+    route: ai
+    answer_mode: rag
+
+  # --- 8. Divisas (baja, IA) ---------------------------------------------------
+  exchange_charge:
+    ticket_type: currency_exchange
+    priority: low
+    route: ai
+    answer_mode: canned
+  exchange_rate:
+    ticket_type: currency_exchange
+    priority: low
+    route: ai
+    answer_mode: canned
+  exchange_via_app:
+    ticket_type: currency_exchange
+    priority: low
+    route: ai
+    answer_mode: canned
+  fiat_currency_support:
+    ticket_type: currency_exchange
+    priority: low
+    route: ai
+    answer_mode: canned
+
+  # --- 9. Identidad y verificación (media) -------------------------------------
+  verify_my_identity:
+    ticket_type: identity_verification
+    priority: medium
+    route: ai
+    answer_mode: rag
+  why_verify_identity:
+    ticket_type: identity_verification
+    priority: low
+    route: ai
+    answer_mode: canned
+  unable_to_verify_identity:
+    ticket_type: identity_verification
+    priority: medium
+    route: human
+    reason: regulatory compliance
+  verify_source_of_funds:
+    ticket_type: identity_verification
+    priority: medium
+    route: human
+    reason: regulatory compliance
+
+  # --- 10. Cuenta y datos personales (baja) ------------------------------------
+  edit_personal_details:
+    ticket_type: account_and_personal_details
+    priority: low
+    route: ai
+    answer_mode: rag
+  passcode_forgotten:
+    ticket_type: account_and_personal_details
+    priority: medium # sin acceso a la cuenta
+    route: human
+    reason: account access security
+  terminate_account:
+    ticket_type: account_and_personal_details
+    priority: low
+    route: human
+    reason: customer retention
+  age_limit:
+    ticket_type: account_and_personal_details
+    priority: low
+    route: ai
+    answer_mode: canned
+  country_support:
+    ticket_type: account_and_personal_details
+    priority: low
+    route: ai
+    answer_mode: canned

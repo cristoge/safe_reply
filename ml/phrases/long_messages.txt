@@ -1,0 +1,12 @@
+# Tickets largos y realistas (bloque 1.4): "intención esperada | texto".
+# Banking77 tiene una mediana de 10 palabras; los tickets reales suelen ser bastante más largos.
+card_arrival | Hi there, I ordered a new card about two weeks ago because my old one was about to expire. The app says it was dispatched but it still hasn't arrived and I'm travelling next week, so I'm getting a bit worried. Could you tell me what's going on?
+transfer_not_received_by_recipient | Good morning. On Monday I sent 500 euros to my landlord using the app. The money left my account straight away and the transfer shows as completed, but my landlord says nothing has reached his account yet. He is now asking me for the rent again. What should I do?
+declined_card_payment | I was trying to pay for groceries at the supermarket this afternoon and my card was declined three times, even though I have plenty of money in my account. It was really embarrassing. Is there something wrong with my card?
+lost_or_stolen_card | I think I left my card in a taxi last night after dinner with friends. I've looked everywhere at home and it's not there. I'm worried someone could use it. Can you help me block it and send a new one?
+top_up_failed | I tried to top up my account with my debit card twice today. Both times the app showed an error message and the money never appeared in my balance. I need the money for a payment tomorrow, please help.
+exchange_rate | Hello, I'm going on holiday to the United States next month and I'd like to understand how the exchange rate works when I pay with my card there. Do you use the official rate or do you add something on top?
+verify_my_identity | I've just opened my account and the app keeps asking me to verify my identity. I uploaded a photo of my passport yesterday but it's still pending. How long does this usually take and is there anything else I need to do?
+transaction_charged_twice | Yesterday I bought a pair of shoes online and when I checked my statement this morning I saw the same payment twice, for exactly the same amount. I only bought one pair. Can you fix this and give me my money back?
+cash_withdrawal_not_recognised | There is a cash withdrawal of 200 pounds on my account from an ATM in a city I have never been to. I still have my card with me. I definitely did not make this withdrawal and I'm really worried.
+change_pin | Hi, I would like to change the PIN on my card because I think it's too easy to guess. I looked in the app but couldn't find the option anywhere. Could you explain the steps, please?

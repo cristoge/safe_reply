@@ -1,13 +1,21 @@
-"""Lo que comparten los scripts de ml/: datos, modelo definitivo y reglas de negocio."""
+"""Lo que comparten los scripts de ml/: datos, modelo definitivo, reglas y router."""
 
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
+import yaml
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 
-DATA_DIR = Path(__file__).parent / "data" / "banking77"
+ML_DIR = Path(__file__).parent
+DATA_DIR = ML_DIR / "data" / "banking77"
+PHRASES_DIR = ML_DIR / "phrases"
+RULES_PATH = ML_DIR.parent / "rules" / "intents.yaml"
 SEED = 42
 
 
@@ -15,6 +23,12 @@ def load_data() -> tuple[pd.DataFrame, pd.DataFrame]:
     train = pd.read_csv(DATA_DIR / "train.csv")
     test = pd.read_csv(DATA_DIR / "test.csv")
     return train, test
+
+
+def load_phrases(name: str) -> list[str]:
+    """Frases de prueba escritas a mano (ml/phrases/<name>.txt): una por línea, # = comentario."""
+    lines = (PHRASES_DIR / f"{name}.txt").read_text(encoding="utf-8").splitlines()
+    return [line.strip() for line in lines if line.strip() and not line.startswith("#")]
 
 
 def build_model() -> Pipeline:
@@ -31,72 +45,130 @@ def build_model() -> Pipeline:
     )
 
 
-# Reglas de negocio (apartado 5 del diseño). Provisional: en el paso 2 pasan a un YAML.
-# ticket_type → (ruta por defecto, intenciones)
-TICKET_TYPES: dict[str, tuple[str, list[str]]] = {
-    "security_and_fraud": ("human", [
-        "lost_or_stolen_card", "compromised_card", "lost_or_stolen_phone",
-        "card_payment_not_recognised", "cash_withdrawal_not_recognised",
-        "direct_debit_payment_not_recognised",
-    ]),
-    "wrong_charges_and_refunds": ("human", [
-        "transaction_charged_twice", "extra_charge_on_statement", "request_refund",
-        "Refund_not_showing_up", "reverted_card_payment?", "wrong_amount_of_cash_received",
-        "card_payment_wrong_exchange_rate", "wrong_exchange_rate_for_cash_withdrawal",
-    ]),
-    "cards_ordering_and_activation": ("ai", [
-        "activate_my_card", "card_arrival", "card_delivery_estimate", "card_about_to_expire",
-        "get_physical_card", "order_physical_card", "getting_spare_card", "getting_virtual_card",
-        "get_disposable_virtual_card", "disposable_card_limits", "card_linking",
-        "apple_pay_or_google_pay", "supported_cards_and_currencies", "visa_or_mastercard",
-    ]),
-    "cards_usage_problems": ("ai", [
-        "card_not_working", "virtual_card_not_working", "contactless_not_working",
-        "declined_card_payment", "card_acceptance", "card_swallowed", "pin_blocked",
-        "change_pin", "pending_card_payment", "card_payment_fee_charged",
-    ]),
-    "atms_and_cash": ("ai", [
-        "atm_support", "declined_cash_withdrawal", "pending_cash_withdrawal",
-        "cash_withdrawal_charge",
-    ]),
-    "transfers": ("ai", [
-        "cancel_transfer", "declined_transfer", "failed_transfer", "pending_transfer",
-        "transfer_timing", "transfer_fee_charged", "transfer_into_account",
-        "transfer_not_received_by_recipient", "receiving_money", "beneficiary_not_allowed",
-        "balance_not_updated_after_bank_transfer",
-    ]),
-    "top_ups": ("ai", [
-        "automatic_top_up", "pending_top_up", "top_up_by_bank_transfer_charge",
-        "top_up_by_card_charge", "top_up_by_cash_or_cheque", "top_up_failed", "top_up_limits",
-        "top_up_reverted", "topping_up_by_card", "verify_top_up",
-        "balance_not_updated_after_cheque_or_cash_deposit",
-    ]),
-    "currency_exchange": ("ai", [
-        "exchange_charge", "exchange_rate", "exchange_via_app", "fiat_currency_support",
-    ]),
-    "identity_verification": ("ai", [
-        "verify_my_identity", "why_verify_identity", "unable_to_verify_identity",
-        "verify_source_of_funds",
-    ]),
-    "account_and_personal_details": ("ai", [
-        "edit_personal_details", "passcode_forgotten", "terminate_account", "age_limit",
-        "country_support",
-    ]),
-}
+# --- Reglas de negocio (rules/intents.yaml) ---------------------------------
 
-# Siempre persona aunque su tipo lo responda la IA
-ALWAYS_HUMAN = {
-    "transfer_not_received_by_recipient",  # posible dinero perdido
-    "failed_transfer",  # posible dinero perdido
-    "unable_to_verify_identity",  # cumplimiento normativo
-    "verify_source_of_funds",  # cumplimiento normativo
-    "passcode_forgotten",  # seguridad de acceso
-    "terminate_account",  # gestión y retención del cliente
-}
 
-INTENT_TYPE = {i: t for t, (_, intents) in TICKET_TYPES.items() for i in intents}
-INTENT_ROUTE = {
-    i: "human" if i in ALWAYS_HUMAN else route
-    for route, intents in TICKET_TYPES.values()
-    for i in intents
-}
+@dataclass(frozen=True)
+class IntentRule:
+    ticket_type: str
+    priority: str
+    route: str  # ai | human
+    answer_mode: str | None  # rag | canned (solo con route: ai)
+    min_confidence: float | None
+    reason: str | None
+
+
+def load_rules(
+    path: Path = RULES_PATH,
+) -> tuple[dict[str, IntentRule], dict, re.Pattern[str]]:
+    """Devuelve (reglas por intención, configuración del router, red de seguridad)."""
+    data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    rules = {
+        intent: IntentRule(
+            ticket_type=r["ticket_type"],
+            priority=r["priority"],
+            route=r["route"],
+            answer_mode=r.get("answer_mode"),
+            min_confidence=r.get("min_confidence"),
+            reason=r.get("reason"),
+        )
+        for intent, r in data["intents"].items()
+    }
+    sensitive = re.compile("|".join(data["sensitive_patterns"]), re.IGNORECASE)
+    return rules, data["router"], sensitive
+
+
+RULES, ROUTER, SENSITIVE = load_rules()
+INTENT_TYPE = {intent: rule.ticket_type for intent, rule in RULES.items()}
+INTENT_ROUTE = {intent: rule.route for intent, rule in RULES.items()}
+
+
+# --- Router (reglas 0 a 4 del apartado 6 del diseño) ------------------------
+
+HUMAN, CANNED, RAG = "human", "canned", "rag"
+
+
+def decide_routes(
+    proba: np.ndarray,
+    classes: np.ndarray,
+    min_confidence: float,
+    max_p_human: float | None = None,
+    canned_min_confidence: float | None = None,
+    texts: Sequence[str] | None = None,
+    rules: dict[str, IntentRule] = RULES,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Decide a dónde va cada ticket a partir de las probabilidades del modelo.
+
+    Las reglas se miran en orden; la primera que se cumple da el motivo (route_reason):
+    0. El texto contiene una palabra sensible (si se pasan `texts`) → persona
+    1. La intención predicha es de "siempre persona"          → persona
+    2. Confianza < umbral (o < min_confidence de la intención) → persona
+    3. P(persona) ≥ max_p_human (si se pasa)                  → persona
+    4. answer_mode canned y confianza ≥ canned_min_confidence → predefinida
+    5. Si no                                                  → RAG
+
+    `texts=None` desactiva la regla 0 · `max_p_human=None`, la 3 ·
+    `canned_min_confidence=None`, la 4 (todo lo de IA iría al RAG).
+    Devuelve (intención predicha, destino, motivo).
+    """
+    n = len(proba)
+    pred = classes[proba.argmax(axis=1)]
+    confidence = proba.max(axis=1)
+    human_columns = np.array([rules[c].route == "human" for c in classes])
+    p_human = proba[:, human_columns].sum(axis=1)
+
+    rule = [rules[p] for p in pred]
+    intent_min = np.array([max(min_confidence, r.min_confidence or 0) for r in rule])
+    sensitive = (
+        np.array([SENSITIVE.search(t) is not None for t in texts])
+        if texts is not None
+        else np.zeros(n, dtype=bool)
+    )
+    ambiguous = (
+        p_human >= max_p_human if max_p_human is not None else np.zeros(n, dtype=bool)
+    )
+    reason = np.select(
+        [
+            sensitive,
+            np.array([r.route == "human" for r in rule]),
+            confidence < intent_min,
+            ambiguous,
+        ],
+        [
+            "sensitive keyword",
+            "intent always human",
+            "low confidence",
+            "ambiguous with sensitive intent",
+        ],
+        default="",
+    ).astype(object)
+    # Intención de persona, pero el modelo duda: el motivo lo dice (el destino es el mismo)
+    reason[(reason == "intent always human") & (confidence < intent_min)] = (
+        "intent always human · low confidence"
+    )
+    allowed = reason == ""
+
+    destination = np.where(allowed, RAG, HUMAN).astype(object)
+    if canned_min_confidence is not None:
+        canned_min = np.maximum(intent_min, canned_min_confidence)
+        is_canned = np.array([r.answer_mode == "canned" for r in rule])
+        canned = allowed & is_canned & (confidence >= canned_min)
+        destination[canned] = CANNED
+        reason[canned] = "canned answer for FAQ intent"
+    return pred, destination, reason
+
+
+def route_tickets(
+    proba: np.ndarray,
+    classes: np.ndarray,
+    min_confidence: float,
+    max_p_human: float | None = None,
+    canned_min_confidence: float | None = None,
+    texts: Sequence[str] | None = None,
+    rules: dict[str, IntentRule] = RULES,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Como `decide_routes`, sin el motivo: (intención predicha, destino)."""
+    pred, destination, _ = decide_routes(
+        proba, classes, min_confidence, max_p_human, canned_min_confidence, texts, rules
+    )
+    return pred, destination

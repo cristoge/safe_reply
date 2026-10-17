@@ -1,0 +1,17 @@
+# Tickets con DOS problemas (bloque 1.4): uno de "siempre persona" + uno que respondería la IA.
+# Todos deberían ir a persona: si gana la intención de IA, se ignora el problema grave.
+My card was stolen yesterday and I also want to know how to change my PIN
+Someone made a payment I don't recognise, and how long do transfers take?
+I was charged twice for my coffee, also can I get a virtual card?
+I lost my phone with the app on it. By the way, what are the top up limits?
+The ATM gave me less cash than I asked for and I'd like to order a physical card
+There's a direct debit I never set up, and what currencies do you support?
+My transfer to my brother never arrived, also how do I activate my new card?
+I can't verify my identity and I want to know the exchange rate for dollars
+I forgot my passcode and my card hasn't arrived yet
+I want to close my account. Also, what's the age limit?
+Someone withdrew cash from my account and it wasn't me, and my contactless isn't working
+My refund still isn't showing and I'd like to change my PIN
+I need a refund for a purchase and I also want to add my card to Apple Pay
+The exchange rate on my card payment was wrong, how do I top up by bank transfer?
+My card might be compromised, can I get a disposable virtual card?

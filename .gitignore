@@ -14,3 +14,6 @@ __pycache__/
 
 # Archivos subidos (LocalStorage)
 data/
+
+# Índice de CodeGraph
+.codegraph/
