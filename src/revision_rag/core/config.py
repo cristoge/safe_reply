@@ -1,5 +1,4 @@
 from functools import lru_cache
-from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr
@@ -24,15 +23,6 @@ class Settings(BaseSettings):
     jwt_secret_key: SecretStr = Field(min_length=32)
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
-
-    # Carpeta de LocalStorage (relativa a donde se arranca la app: la raíz del repo).
-    storage_dir: Path = Path("data/uploads")
-    # 20 MB. Ojo: el archivo ya ha llegado entero al servidor cuando se comprueba;
-    # en producción el límite de verdad lo pone el proxy (nginx, ALB) antes.
-    max_upload_bytes: int = 20 * 1024 * 1024
-    # Con qué modelo se indexan los documentos. Se guarda en cada documento para
-    # saber cuáles hay que reprocesar si se cambia.
-    embedding_model: str = "nomic-embed-text-v2-moe"
 
 
 @lru_cache

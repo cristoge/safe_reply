@@ -3,34 +3,52 @@ from enum import StrEnum
 from sqlalchemy import Enum
 
 
-class SourceType(StrEnum):
-    PDF = "pdf"
-    MARKDOWN = "markdown"
+class UserRole(StrEnum):
+    CUSTOMER = "customer"
+    AGENT = "agent"
 
 
-class DocumentStatus(StrEnum):
-    PENDING = "pending"
+class TicketStatus(StrEnum):
+    # Camino de la IA: received → processing → answered.
+    # Camino de persona: … → in_human_queue → contacted → resolved.
+    RECEIVED = "received"
     PROCESSING = "processing"
-    COMPLETED = "completed"
-    FAILED = "failed"
+    ANSWERED = "answered"
+    IN_HUMAN_QUEUE = "in_human_queue"
+    CONTACTED = "contacted"
+    RESOLVED = "resolved"
 
 
-class MessageRole(StrEnum):
-    USER = "user"
-    ASSISTANT = "assistant"
+class Route(StrEnum):
+    AI = "ai"
+    HUMAN = "human"
+
+
+class MessageAuthor(StrEnum):
+    CUSTOMER = "customer"
+    # Plantillas y respuestas predefinidas: textos fijos, no generados.
+    SYSTEM = "system"
+    AI = "ai"
+    AGENT = "agent"
 
 
 class MessageStatus(StrEnum):
-    COMPLETED = "completed"
-    INTERRUPTED = "interrupted"
-    FAILED = "failed"
+    # draft = borrador de la IA que el juez no ha dejado enviar: lo ve el agente,
+    # nunca el cliente.
+    DRAFT = "draft"
+    SENT = "sent"
 
 
-class StudyMaterialKind(StrEnum):
-    SUMMARY = "summary"
-    FLASHCARDS = "flashcards"
-    QUIZ = "quiz"
-    GLOSSARY = "glossary"
+class TicketEventType(StrEnum):
+    CREATED = "created"
+    STATUS_CHANGED = "status_changed"
+    ASSIGNED = "assigned"
+    UNASSIGNED = "unassigned"
+    CALL_FAILED = "call_failed"
+    ESCALATED = "escalated"
+    # El cliente escribe en un ticket que ya está con una persona: no cambia el
+    # estado, pero tiene que quedar en el historial.
+    CUSTOMER_REPLIED = "customer_replied"
 
 
 def str_enum(enum_cls: type[StrEnum], name: str) -> Enum:

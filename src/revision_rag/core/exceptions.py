@@ -14,7 +14,7 @@ class AppError(Exception):
 
     def __init__(self, detail: str | None = None) -> None:
         # El mensaje de la clase vale para casi todo; se puede dar uno concreto
-        # cuando el mismo error tiene varias causas (p. ej. InvalidFileError).
+        # cuando el mismo error tiene varias causas.
         if detail is not None:
             self.detail = detail
         super().__init__(self.detail)
@@ -43,29 +43,3 @@ class NotAuthenticatedError(AppError):
 class InvalidRefreshTokenError(AppError):
     status_code = 401
     detail = "Refresh token no válido"
-
-
-class ProjectNotFoundError(AppError):
-    status_code = 404
-    detail = "Proyecto no encontrado"
-
-
-class DocumentNotFoundError(AppError):
-    status_code = 404
-    detail = "Documento no encontrado"
-
-
-class UnsupportedFileTypeError(AppError):
-    status_code = 415
-    detail = "Tipo de archivo no soportado: solo .pdf y .md"
-
-
-class FileTooLargeError(AppError):
-    status_code = 413
-    detail = "El archivo es demasiado grande"
-
-
-class InvalidFileError(AppError):
-    # La extensión es válida pero el contenido no cuadra con ella.
-    status_code = 422
-    detail = "El archivo no es válido"

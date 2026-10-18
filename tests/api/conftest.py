@@ -1,12 +1,5 @@
-from collections.abc import Iterator
-from pathlib import Path
-
 import pytest
 from httpx import AsyncClient
-
-from revision_rag.api.deps import get_storage
-from revision_rag.clients.storage import LocalStorage
-from revision_rag.main import app
 
 
 async def login_headers(client: AsyncClient, email: str) -> dict[str, str]:
@@ -29,12 +22,3 @@ async def auth_headers(client: AsyncClient) -> dict[str, str]:
 async def other_auth_headers(client: AsyncClient) -> dict[str, str]:
     """Un segundo usuario, para comprobar que no ve lo del primero."""
     return await login_headers(client, "otra@test.com")
-
-
-@pytest.fixture(autouse=True)
-def storage(tmp_path: Path) -> Iterator[LocalStorage]:
-    """Storage en una carpeta temporal (una por test): nunca se escribe en data/."""
-    test_storage = LocalStorage(tmp_path)
-    app.dependency_overrides[get_storage] = lambda: test_storage
-    yield test_storage
-    app.dependency_overrides.pop(get_storage, None)
