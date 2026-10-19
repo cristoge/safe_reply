@@ -97,7 +97,7 @@ def show_p_human(proba: np.ndarray, classes: np.ndarray, y: np.ndarray) -> None:
 def show_canned(
     proba: np.ndarray, classes: np.ndarray, y: np.ndarray, texts: list[str]
 ) -> None:
-    threshold, limit = ROUTER["min_confidence"], ROUTER["max_p_human"]
+    threshold, limit = ROUTER.min_confidence, ROUTER.max_p_human
     section(
         f"3. Respuestas predefinidas (umbral {threshold}, límite P(persona) {limit})"
     )
@@ -120,9 +120,9 @@ def show_current_config(
     proba: np.ndarray, classes: np.ndarray, y: np.ndarray, texts: list[str]
 ) -> None:
     config = (
-        ROUTER["min_confidence"],
-        ROUTER["max_p_human"],
-        ROUTER["canned_min_confidence"],
+        ROUTER.min_confidence,
+        ROUTER.max_p_human,
+        ROUTER.canned_min_confidence,
     )
     section(
         f"4. Configuración de rules/intents.yaml (umbral, límite, predefinidas) = {config}"

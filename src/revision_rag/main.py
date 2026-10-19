@@ -8,10 +8,32 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from revision_rag.api.routes import auth, tickets, users
+from revision_rag.clients.classifier import ClassifierLoadError, JoblibClassifier
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import AppError
 from revision_rag.db.cache import RedisClient, build_redis
 from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
+from revision_rag.triage.answers import CannedAnswers
+from revision_rag.triage.rules import Rules, load_rules
+
+
+def load_triage(settings: Settings) -> tuple[Rules, JoblibClassifier, CannedAnswers]:
+    """Reglas, modelo y respuestas predefinidas, comprobados entre sí.
+
+    Lanza si algo falta o no cuadra: mejor no arrancar que clasificar con un
+    modelo que predice intenciones que el YAML no conoce (o al revés).
+    """
+    rules = load_rules(settings.rules_path)
+    classifier = JoblibClassifier.load(settings.classifier_path)
+    if classifier.classes != set(rules.intents):
+        unknown = sorted(classifier.classes - set(rules.intents))
+        untrained = sorted(set(rules.intents) - classifier.classes)
+        msg = (
+            "El modelo y rules/intents.yaml no tienen las mismas intenciones"
+            f" (solo en el modelo: {unknown} · solo en el YAML: {untrained})"
+        )
+        raise ClassifierLoadError(msg)
+    return rules, classifier, CannedAnswers.from_dir(settings.canned_dir)
 
 
 @asynccontextmanager
@@ -20,6 +42,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # comprueban las conexiones. Si alguno no responde, la app no llega a
     # arrancar (fail fast).
     settings = get_settings()
+    # Primero lo que no abre conexiones: si falta el modelo, no queda nada abierto.
+    app.state.rules, app.state.classifier, app.state.canned_answers = load_triage(
+        settings
+    )
     engine = build_engine(settings.database_url)
     async with engine.connect() as conn:
         await conn.execute(text("SELECT 1"))

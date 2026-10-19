@@ -45,6 +45,25 @@ due_hours:
   medium: 4
   low: 24
 
+# Detector de urgencia: sube un nivel la prioridad base de la intención (como
+# mucho, a high). Basta una señal; varias no suben más de un nivel.
+urgency:
+  patterns:
+    - '\burgent(?:ly)?\b'
+    - '\basap\b'
+    - '\bas soon as possible\b'
+    - '\bimmediately\b'
+    - '\bemergency\b'
+    - '!{3,}'
+  # El cliente insiste: su ticket número N (contando este) en la ventana.
+  repeat_tickets: 3
+  repeat_window_hours: 24
+
+# El RAG llega en la v2. Mientras esté apagado, las intenciones con answer_mode
+# rag que el router manda al RAG responden con su predefinida (genérica a
+# propósito: "si no es tu caso, responde y te llamamos").
+rag_enabled: false
+
 intents:
   # --- 1. Seguridad y fraude: siempre persona, prioridad alta ---------------
   lost_or_stolen_card:

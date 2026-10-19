@@ -14,6 +14,11 @@ class TicketMessageRepository:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
+    async def add(self, message: TicketMessage) -> TicketMessage:
+        self.session.add(message)
+        await self.session.flush()
+        return message
+
     async def list_sent(self, ticket_id: uuid.UUID) -> Sequence[TicketMessage]:
         """Los mensajes que ve el cliente, en orden. Los borradores, nunca.
 

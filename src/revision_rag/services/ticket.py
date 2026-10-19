@@ -16,13 +16,14 @@ from revision_rag.repositories.ticket_event import TicketEventRepository
 from revision_rag.repositories.ticket_message import TicketMessageRepository
 from revision_rag.schemas.ticket import MessageRead, TicketCreate, TicketDetail
 from revision_rag.services.rate_limiter import RateLimiter
+from revision_rag.tasks.queue import TaskQueue
 
 
 class TicketService:
     """Lo que hace el cliente con sus tickets: abrirlos y consultarlos.
 
-    En el S3 un ticket nuevo se queda en received: clasificarlo y enrutarlo es
-    el procesado del S4.
+    Un ticket nuevo se guarda en received y se encola para procesarlo (en la v1,
+    InlineTaskQueue lo procesa al momento, dentro de la misma petición).
     """
 
     def __init__(
@@ -32,17 +33,19 @@ class TicketService:
         messages: TicketMessageRepository,
         events: TicketEventRepository,
         rate_limiter: RateLimiter,
+        queue: TaskQueue,
     ) -> None:
         self.session = session
         self.tickets = tickets
         self.messages = messages
         self.events = events
         self.rate_limiter = rate_limiter
+        self.queue = queue
 
     async def create(
         self, customer: User, data: TicketCreate, idempotency_key: str | None = None
     ) -> Ticket:
-        """Crea el ticket en received con su evento created.
+        """Crea el ticket en received con su evento created y lo encola para procesarlo.
 
         Con Idempotency-Key, un reintento devuelve el ticket que ya se creó con
         ella, sin crear otro ni gastar cupo del rate limit (no es una acción
@@ -91,6 +94,12 @@ class TicketService:
         )
         # Ticket (con su key) y evento en un solo commit: nunca uno sin el otro.
         await self.session.commit()
+
+        # Después del commit: el ticket ya existe pase lo que pase con el
+        # procesado (y si este falla, el ticket acaba en la cola humana).
+        await self.queue.enqueue_ticket(ticket.id)
+        # Lo que haya decidido el procesado (con ARQ, seguiría en received).
+        await self.session.refresh(ticket)
         return ticket
 
     @staticmethod

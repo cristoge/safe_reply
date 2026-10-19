@@ -26,3 +26,20 @@ description = "Crea un agente de soporte (pide la contraseña). Uso: mise run ag
 # Los agentes no se registran por la API: si /auth/register pudiera crearlos,
 # cualquiera se daría permisos.
 run = "uv run python scripts/create_agent.py"
+
+[tasks."ml:data"]
+description = "Descarga Banking77 (PolyAI) en ml/data/banking77/ y comprueba los checksums"
+# Los datos no están en Git (ml/data/ está ignorado). ml/banking77.sha256 fija
+# la versión exacta: si PolyAI cambiara los archivos, la tarea falla en vez de
+# entrenar con otros datos sin avisar.
+run = """
+mkdir -p ml/data/banking77
+for f in train.csv test.csv categories.json; do
+  curl -fsSL -o "ml/data/banking77/$f" "https://raw.githubusercontent.com/PolyAI-LDN/task-specific-datasets/master/banking_data/$f"
+done
+cd ml/data/banking77 && shasum -a 256 -c ../../banking77.sha256
+"""
+
+[tasks."ml:train"]
+description = "Entrena el clasificador y lo guarda en models/ (lo carga el backend al arrancar)"
+run = "uv run python ml/train.py"

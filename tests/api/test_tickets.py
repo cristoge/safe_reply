@@ -1,6 +1,7 @@
 import uuid
 
 import pytest
+from fakes import FakeClassifier
 from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +10,7 @@ from revision_rag.core.config import get_settings
 from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
 from revision_rag.models.enums import MessageAuthor, MessageStatus, TicketEventType
 from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
+from revision_rag.triage.answers import CALL_TEMPLATE, PROVISIONAL_ANSWER
 
 TICKETS_URL = "/api/v1/tickets"
 TEXT = "My card hasn't arrived yet"
@@ -25,9 +27,10 @@ async def create_ticket(
 # --- POST /tickets ------------------------------------------------------------
 
 
-async def test_create_returns_202_with_the_ticket_in_received(
+async def test_create_returns_202_with_the_processed_ticket(
     client: AsyncClient, auth_headers: dict[str, str]
 ) -> None:
+    # El clasificador falso duda por defecto → persona ("low confidence").
     response = await client.post(
         TICKETS_URL, json={"text": f"  {TEXT}  "}, headers=auth_headers
     )
@@ -35,9 +38,10 @@ async def test_create_returns_202_with_the_ticket_in_received(
     assert response.status_code == 202
     body = response.json()
     assert body["text"] == TEXT  # sin los espacios de los extremos
-    assert body["status"] == "received"
-    assert body["ticket_type"] is None
-    # Lo interno no sale nunca al cliente.
+    # 202 aunque ya esté procesado: la API no cambiará cuando llegue ARQ (v2).
+    assert body["status"] == "in_human_queue"
+    assert body["ticket_type"] == "cards_ordering_and_activation"
+    # Lo interno (intención, prioridad, motivos) no sale nunca al cliente.
     assert set(body) == {
         "id",
         "text",
@@ -49,18 +53,84 @@ async def test_create_returns_202_with_the_ticket_in_received(
     assert response.headers["location"].endswith(f"{TICKETS_URL}/{body['id']}")
 
 
-async def test_create_writes_the_created_event(
+async def test_create_writes_the_history(
     client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession
 ) -> None:
     body = await create_ticket(client, auth_headers)
 
-    events = (await db_session.scalars(select(TicketEvent))).all()
+    events = (
+        await db_session.scalars(
+            select(TicketEvent).order_by(TicketEvent.created_at, TicketEvent.id)
+        )
+    ).all()
     customer_id = await db_session.scalar(
         select(Ticket.customer_id).where(Ticket.id == uuid.UUID(body["id"]))
     )
-    assert [(e.event, e.actor_id) for e in events] == [
-        (TicketEventType.CREATED, customer_id)
+    # created lo provoca el cliente; los cambios de estado, el sistema (None).
+    assert [(e.event, e.from_status, e.to_status, e.actor_id) for e in events] == [
+        (TicketEventType.CREATED, None, None, customer_id),
+        (TicketEventType.STATUS_CHANGED, "received", "processing", None),
+        (TicketEventType.STATUS_CHANGED, "processing", "in_human_queue", None),
     ]
+
+
+async def test_faq_ticket_is_answered_with_its_canned_answer(
+    client: AsyncClient, auth_headers: dict[str, str], classifier: FakeClassifier
+) -> None:
+    text = "What is the age limit to open an account?"
+    classifier.answer(text, "age_limit")
+
+    body = await create_ticket(client, auth_headers, text)
+    detail = (
+        await client.get(f"{TICKETS_URL}/{body['id']}", headers=auth_headers)
+    ).json()
+
+    assert body["status"] == "answered"
+    # Sin policies/canned/age_limit.md todavía (S6): la provisional.
+    assert [(m["author"], m["content"]) for m in detail["messages"]] == [
+        ("customer", text),
+        ("system", PROVISIONAL_ANSWER),
+    ]
+
+
+async def test_stolen_card_goes_to_a_person_with_the_call_template(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    classifier: FakeClassifier,
+    db_session: AsyncSession,
+) -> None:
+    text = "My card was stolen"
+    classifier.answer(text, "lost_or_stolen_card")
+
+    body = await create_ticket(client, auth_headers, text)
+    detail = (
+        await client.get(f"{TICKETS_URL}/{body['id']}", headers=auth_headers)
+    ).json()
+    ticket = await db_session.get(Ticket, uuid.UUID(body["id"]))
+
+    assert body["status"] == "in_human_queue"
+    assert detail["messages"][-1] == {
+        "author": "system",
+        "content": CALL_TEMPLATE,
+        "created_at": detail["messages"][-1]["created_at"],
+    }
+    assert ticket is not None
+    assert ticket.route_reason == "sensitive keyword"
+    assert ticket.priority == 3
+    assert ticket.due_at is not None
+    assert (ticket.due_at - ticket.created_at).total_seconds() == 3600
+
+
+async def test_processing_error_still_answers_and_goes_to_a_person(
+    client: AsyncClient, auth_headers: dict[str, str], classifier: FakeClassifier
+) -> None:
+    classifier.error = RuntimeError("model exploded")
+
+    response = await client.post(TICKETS_URL, json={"text": TEXT}, headers=auth_headers)
+
+    # El cliente no ve el fallo: su ticket está creado y en la cola humana.
+    assert response.status_code == 202
+    assert response.json()["status"] == "in_human_queue"
 
 
 @pytest.mark.parametrize(
@@ -264,9 +334,10 @@ async def test_detail_shows_the_conversation_without_drafts(
 
     assert response.status_code == 200
     detail = response.json()
-    assert detail["status"] == "received"
+    assert detail["status"] == "in_human_queue"
     assert [(m["author"], m["content"]) for m in detail["messages"]] == [
         ("customer", TEXT),
+        ("system", CALL_TEMPLATE),  # la respuesta del procesado
         ("system", "Cards usually arrive in 5-7 working days."),
         ("customer", "It's been 3 weeks"),
     ]

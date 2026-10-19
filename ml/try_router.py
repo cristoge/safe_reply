@@ -49,13 +49,13 @@ def main() -> None:
     pred, dest, reason = decide_routes(
         proba,
         classes,
-        ROUTER["min_confidence"],
-        ROUTER["max_p_human"],
-        ROUTER["canned_min_confidence"],
+        ROUTER.min_confidence,
+        ROUTER.max_p_human,
+        ROUTER.canned_min_confidence,
         texts,
     )
     human_columns = np.array([RULES[c].route == HUMAN for c in classes])
-    config = f"umbral {ROUTER['min_confidence']} · P(persona) < {ROUTER['max_p_human']} · predefinidas ≥ {ROUTER['canned_min_confidence']}"
+    config = f"umbral {ROUTER.min_confidence} · P(persona) < {ROUTER.max_p_human} · predefinidas ≥ {ROUTER.canned_min_confidence}"
     print(f"Router: {config}\n")
 
     for i, text in enumerate(texts):

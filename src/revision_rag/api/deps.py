@@ -8,9 +8,10 @@ el repositorio y el servicio comparten la misma sesión (y la misma transacción
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, Query
+from fastapi import Depends, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from revision_rag.clients.classifier import IntentClassifier
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import ForbiddenError, NotAuthenticatedError
 from revision_rag.db.cache import RedisClient
@@ -26,7 +27,11 @@ from revision_rag.schemas.pagination import PaginationParams
 from revision_rag.services.auth import AuthService
 from revision_rag.services.rate_limiter import RateLimiter
 from revision_rag.services.ticket import TicketService
+from revision_rag.services.ticket_processor import TicketProcessor
 from revision_rag.services.user import UserService
+from revision_rag.tasks.queue import InlineTaskQueue, TaskQueue
+from revision_rag.triage.answers import CannedAnswers
+from revision_rag.triage.rules import Rules
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
 
@@ -115,9 +120,48 @@ def get_ticket_rate_limiter(redis: RedisClient, settings: SettingsDep) -> RateLi
     )
 
 
+# Reglas, modelo y respuestas se cargan una vez al arrancar (lifespan, main.py)
+# y se comparten entre peticiones. En los tests se sustituyen (modelo falso).
+def get_rules(request: Request) -> Rules:
+    return request.app.state.rules
+
+
+def get_classifier(request: Request) -> IntentClassifier:
+    return request.app.state.classifier
+
+
+def get_canned_answers(request: Request) -> CannedAnswers:
+    return request.app.state.canned_answers
+
+
+def get_ticket_processor(
+    db: DbSession,
+    rules: Annotated[Rules, Depends(get_rules)],
+    classifier: Annotated[IntentClassifier, Depends(get_classifier)],
+    answers: Annotated[CannedAnswers, Depends(get_canned_answers)],
+) -> TicketProcessor:
+    return TicketProcessor(
+        db,
+        TicketRepository(db),
+        TicketMessageRepository(db),
+        TicketEventRepository(db),
+        classifier,
+        rules,
+        answers,
+    )
+
+
+def get_task_queue(
+    processor: Annotated[TicketProcessor, Depends(get_ticket_processor)],
+) -> TaskQueue:
+    # v1: en la misma petición. En la v2 aquí se devolverá un ArqTaskQueue.
+    return InlineTaskQueue(processor.process_ticket)
+
+
 def get_ticket_service(
     db: DbSession,
     rate_limiter: Annotated[RateLimiter, Depends(get_ticket_rate_limiter)],
+    queue: Annotated[TaskQueue, Depends(get_task_queue)],
 ) -> TicketService:
     return TicketService(
         db,
@@ -125,6 +169,7 @@ def get_ticket_service(
         TicketMessageRepository(db),
         TicketEventRepository(db),
         rate_limiter,
+        queue,
     )
 
 

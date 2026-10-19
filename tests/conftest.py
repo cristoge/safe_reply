@@ -7,15 +7,19 @@ from urllib.parse import urlsplit
 import pytest
 from alembic import command
 from alembic.config import Config
+from fakes import FakeClassifier
 from httpx import ASGITransport, AsyncClient
 from redis.asyncio import Redis
 from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
+from revision_rag.api.deps import get_canned_answers, get_classifier, get_rules
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.db.cache import build_redis, get_redis
 from revision_rag.db.session import get_db
 from revision_rag.main import app
+from revision_rag.triage.answers import CannedAnswers
+from revision_rag.triage.rules import Rules, load_rules
 
 _settings = Settings()  # pyright: ignore[reportCallIssue]
 
@@ -32,6 +36,7 @@ os.environ["REDIS_URL"] = TEST_REDIS_URL
 get_settings.cache_clear()
 
 ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
+RULES_PATH = Path(__file__).parents[1] / "rules" / "intents.yaml"
 
 
 async def _recreate_test_database() -> None:
@@ -104,9 +109,37 @@ async def redis(redis_client: Redis) -> Redis:
     return redis_client
 
 
+@pytest.fixture(scope="session")
+def rules() -> Rules:
+    """Las reglas reales (rules/intents.yaml)."""
+    return load_rules(RULES_PATH)
+
+
 @pytest.fixture
-async def client(db_session: AsyncSession, redis: Redis) -> AsyncIterator[AsyncClient]:
-    """Cliente HTTP contra la app, sin levantar servidor, con la sesión y el Redis del test."""
+def classifier(rules: Rules) -> FakeClassifier:
+    return FakeClassifier(frozenset(rules.intents))
+
+
+@pytest.fixture
+def canned_answers() -> CannedAnswers:
+    """Sin respuestas revisadas: todas usan la provisional (como antes del S6)."""
+    return CannedAnswers({})
+
+
+@pytest.fixture
+async def client(
+    db_session: AsyncSession,
+    redis: Redis,
+    rules: Rules,
+    classifier: FakeClassifier,
+    canned_answers: CannedAnswers,
+) -> AsyncIterator[AsyncClient]:
+    """Cliente HTTP contra la app, sin levantar servidor.
+
+    Con la sesión y el Redis del test, las reglas reales y el clasificador
+    falso. ASGITransport no ejecuta el lifespan: lo que este carga en app.state
+    se inyecta aquí.
+    """
 
     async def override_get_db() -> AsyncIterator[AsyncSession]:
         yield db_session
@@ -116,6 +149,9 @@ async def client(db_session: AsyncSession, redis: Redis) -> AsyncIterator[AsyncC
 
     app.dependency_overrides[get_db] = override_get_db
     app.dependency_overrides[get_redis] = override_get_redis
+    app.dependency_overrides[get_rules] = lambda: rules
+    app.dependency_overrides[get_classifier] = lambda: classifier
+    app.dependency_overrides[get_canned_answers] = lambda: canned_answers
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
         yield client

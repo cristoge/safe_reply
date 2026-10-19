@@ -12,8 +12,12 @@ __pycache__/
 .pytest_cache/
 .ruff_cache/
 
-# Archivos subidos (LocalStorage)
+# Datos que no son nuestros (Banking77: mise run ml:data). Ignora también ml/data/.
 data/
+
+# Modelos entrenados: se regeneran con mise run ml:train (15 MB por versión;
+# en Git, cada reentrenamiento añadiría otra copia entera al historial)
+models/
 
 # Índice de CodeGraph
 .codegraph/

@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr
@@ -28,6 +29,12 @@ class Settings(BaseSettings):
     # a persona es una llamada: el límite protege al equipo de soporte del spam.
     ticket_rate_limit: int = 5
     ticket_rate_window_seconds: int = 60 * 60
+
+    # Lo que se carga al arrancar para procesar tickets (rutas relativas a donde
+    # se arranca la app: la raíz del repo). Si falta algo, la app no arranca.
+    rules_path: Path = Path("rules/intents.yaml")
+    classifier_path: Path = Path("models/intent_classifier.joblib")
+    canned_dir: Path = Path("policies/canned")
 
 
 @lru_cache

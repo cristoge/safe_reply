@@ -1,5 +1,6 @@
 """TicketService contra Postgres y Redis reales: lo que no se ve bien por HTTP."""
 
+import uuid
 from typing import Any
 
 import pytest
@@ -19,14 +20,32 @@ from revision_rag.services.ticket import TicketService
 TEXT = "My card hasn't arrived yet"
 
 
+class RecordingQueue:
+    """Una cola que solo apunta qué se encola (aquí no interesa el procesado)."""
+
+    def __init__(self) -> None:
+        self.enqueued: list[uuid.UUID] = []
+
+    async def enqueue_ticket(self, ticket_id: uuid.UUID) -> None:
+        self.enqueued.append(ticket_id)
+
+
 @pytest.fixture
-def service(db_session: AsyncSession, redis: Redis) -> TicketService:
+def queue() -> RecordingQueue:
+    return RecordingQueue()
+
+
+@pytest.fixture
+def service(
+    db_session: AsyncSession, redis: Redis, queue: RecordingQueue
+) -> TicketService:
     return TicketService(
         db_session,
         TicketRepository(db_session),
         TicketMessageRepository(db_session),
         TicketEventRepository(db_session),
         RateLimiter(redis, limit=5, window_seconds=60),
+        queue,
     )
 
 
@@ -79,3 +98,29 @@ async def test_losing_the_race_with_other_text_raises_422(
 
     with pytest.raises(IdempotencyKeyReusedError):
         await service.create(customer, TicketCreate(text="Something else"), "k")
+
+
+async def test_new_tickets_are_enqueued_and_replays_are_not(
+    service: TicketService, queue: RecordingQueue, customer: User
+) -> None:
+    first = await service.create(customer, TicketCreate(text=TEXT), "k")
+    again = await service.create(customer, TicketCreate(text=TEXT), "k")
+
+    # Con una cola de verdad (ARQ) el ticket seguiría en received.
+    assert again.id == first.id
+    assert first.status == "received"
+    assert queue.enqueued == [first.id]
+
+
+async def test_losing_the_race_does_not_enqueue_again(
+    service: TicketService,
+    db_session: AsyncSession,
+    customer: User,
+    queue: RecordingQueue,
+) -> None:
+    await lose_the_race(service, db_session, customer)
+
+    await service.create(customer, TicketCreate(text=TEXT), "k")
+
+    # El ticket lo creó (y lo encoló) la otra petición.
+    assert queue.enqueued == []

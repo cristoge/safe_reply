@@ -45,9 +45,9 @@ def route(
     pred, dest = route_tickets(
         proba,
         model.classes_,
-        ROUTER["min_confidence"] if threshold is None else threshold,
-        ROUTER["max_p_human"],
-        ROUTER["canned_min_confidence"],
+        ROUTER.min_confidence if threshold is None else threshold,
+        ROUTER.max_p_human,
+        ROUTER.canned_min_confidence,
         list(texts),
     )
     human_columns = np.array([INTENT_ROUTE[c] == HUMAN for c in model.classes_])
@@ -159,9 +159,9 @@ def main() -> None:
     train, test = load_data()
     model = build_model().fit(train["text"], train["category"])
     config = (
-        ROUTER["min_confidence"],
-        ROUTER["max_p_human"],
-        ROUTER["canned_min_confidence"],
+        ROUTER.min_confidence,
+        ROUTER.max_p_human,
+        ROUTER.canned_min_confidence,
     )
     print(
         f"Router de rules/intents.yaml (umbral, límite P(persona), predefinidas) = {config}"
