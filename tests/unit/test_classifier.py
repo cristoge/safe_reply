@@ -5,6 +5,8 @@ ejecutado mise run ml:train.
 """
 
 import json
+import shutil
+from collections.abc import Callable
 from pathlib import Path
 
 import joblib
@@ -17,7 +19,10 @@ from sklearn.pipeline import make_pipeline
 from revision_rag.clients.classifier import ClassifierLoadError, JoblibClassifier
 from revision_rag.core.config import get_settings
 from revision_rag.main import load_triage
+from revision_rag.triage.answers import CannedAnswersError
 from revision_rag.triage.rules import Rules
+
+CANNED_DIR = Path(__file__).parents[2] / "policies" / "canned"
 
 
 def save_model(
@@ -87,13 +92,45 @@ def test_load_triage_with_a_model_for_every_intent(
     intents = sorted(rules.intents)
     path = save_model(tmp_path / "model.joblib", intents, intents)
     settings = get_settings().model_copy(
-        update={"classifier_path": path, "canned_dir": tmp_path / "canned"}
+        update={"classifier_path": path, "canned_dir": CANNED_DIR}
     )
 
     loaded_rules, classifier, answers = load_triage(settings)
 
     assert classifier.classes == set(loaded_rules.intents)
-    assert len(answers) == 0
+    assert len(answers) == 57  # 29 canned + 28 rag: las intenciones de IA
+
+
+@pytest.mark.filterwarnings("ignore:The number of unique classes")
+@pytest.mark.parametrize(
+    ("change", "message"),
+    [
+        # Falta una intención de IA: no hay texto de reserva.
+        (lambda d: (d / "age_limit.md").unlink(), r"faltan: \['age_limit'\]"),
+        # Sobra una de persona: nunca se debe enviar sin una persona.
+        (
+            lambda d: (d / "lost_or_stolen_card.md").write_text("x"),
+            r"sobran: \['lost_or_stolen_card'\]",
+        ),
+    ],
+)
+def test_load_triage_refuses_answers_that_do_not_match_the_rules(
+    tmp_path: Path,
+    rules: Rules,
+    change: Callable[[Path], object],
+    message: str,
+) -> None:
+    intents = sorted(rules.intents)
+    path = save_model(tmp_path / "model.joblib", intents, intents)
+    canned_dir = tmp_path / "canned"
+    shutil.copytree(CANNED_DIR, canned_dir)
+    change(canned_dir)
+    settings = get_settings().model_copy(
+        update={"classifier_path": path, "canned_dir": canned_dir}
+    )
+
+    with pytest.raises(CannedAnswersError, match=message):
+        load_triage(settings)
 
 
 def test_load_triage_refuses_a_model_that_does_not_match_the_rules(

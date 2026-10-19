@@ -16,7 +16,7 @@ from revision_rag.models.enums import (
     TicketStatus,
 )
 from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
-from revision_rag.triage.answers import CALL_TEMPLATE, PROVISIONAL_ANSWER
+from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
 
 TICKETS_URL = "/api/v1/tickets"
 TEXT = "My card hasn't arrived yet"
@@ -81,7 +81,10 @@ async def test_create_writes_the_history(
 
 
 async def test_faq_ticket_is_answered_with_its_canned_answer(
-    client: AsyncClient, auth_headers: dict[str, str], classifier: FakeClassifier
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    classifier: FakeClassifier,
+    canned_answers: CannedAnswers,
 ) -> None:
     text = "What is the age limit to open an account?"
     classifier.answer(text, "age_limit")
@@ -92,10 +95,9 @@ async def test_faq_ticket_is_answered_with_its_canned_answer(
     ).json()
 
     assert body["status"] == "answered"
-    # Sin policies/canned/age_limit.md todavía (S6): la provisional.
     assert [(m["author"], m["content"]) for m in detail["messages"]] == [
         ("customer", text),
-        ("system", PROVISIONAL_ANSWER),
+        ("system", canned_answers.for_intent("age_limit")),
     ]
 
 
@@ -409,6 +411,7 @@ async def test_escalating_sends_the_ticket_to_a_person(
     auth_headers: dict[str, str],
     classifier: FakeClassifier,
     db_session: AsyncSession,
+    canned_answers: CannedAnswers,
 ) -> None:
     body = await answered_ticket(client, auth_headers, classifier)
 
@@ -421,7 +424,7 @@ async def test_escalating_sends_the_ticket_to_a_person(
     assert detail["status"] == "in_human_queue"
     assert [(m["author"], m["content"]) for m in detail["messages"]] == [
         ("customer", FAQ),
-        ("system", PROVISIONAL_ANSWER),
+        ("system", canned_answers.for_intent("age_limit")),
         ("system", CALL_TEMPLATE),
     ]
     ticket = await db_session.get(Ticket, uuid.UUID(body["id"]))

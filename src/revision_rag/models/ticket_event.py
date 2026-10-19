@@ -37,7 +37,7 @@ class TicketEvent(CreatedAtMixin, Base):
     actor_id: Mapped[uuid.UUID | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL")
     )
-    # "no answer", "processing timeout", "claimed > 4 h without contact"...
+    # "no answer", "processing timeout", "claimed > 2 h without contact"...
     reason: Mapped[str | None] = mapped_column(Text)
 
     ticket: Mapped[Ticket] = relationship(back_populates="events", lazy="raise")

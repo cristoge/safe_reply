@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import pytest
+
 from revision_rag.triage.answers import (
     CALL_TEMPLATE,
-    PROVISIONAL_ANSWER,
     CannedAnswers,
     unreachable_message,
 )
@@ -18,16 +19,17 @@ def test_loads_one_answer_per_markdown_file(tmp_path: Path) -> None:
     assert answers.for_intent("age_limit") == "You must be 18."
 
 
-def test_intents_without_a_reviewed_answer_get_the_provisional_one(
-    tmp_path: Path,
-) -> None:
+def test_an_intent_without_answer_has_no_fallback_text(tmp_path: Path) -> None:
+    # Sin texto de reserva: el procesado lo convierte en "processing error" y el
+    # ticket va a persona (load_triage ya impide arrancar así).
     answers = CannedAnswers.from_dir(tmp_path)
 
-    assert answers.for_intent("country_support") == PROVISIONAL_ANSWER
+    with pytest.raises(KeyError):
+        answers.for_intent("country_support")
 
 
-def test_missing_directory_means_no_answers_yet(tmp_path: Path) -> None:
-    # Antes del S6 policies/canned/ no existe: no es un error.
+def test_missing_directory_means_no_answers(tmp_path: Path) -> None:
+    # No lanza aquí: el error, con lo que falta, lo da load_triage.
     answers = CannedAnswers.from_dir(tmp_path / "policies" / "canned")
 
     assert len(answers) == 0

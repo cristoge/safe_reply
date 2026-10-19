@@ -23,14 +23,15 @@ from revision_rag.services.ticket_processor import (
     TicketProcessor,
 )
 from revision_rag.triage import router
-from revision_rag.triage.answers import CALL_TEMPLATE, PROVISIONAL_ANSWER, CannedAnswers
+from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
 from revision_rag.triage.rules import Rules
-
-AGE_LIMIT_ANSWER = "You can open an account from the age of 18."
 
 
 def make_processor(
-    db_session: AsyncSession, classifier: FakeClassifier, rules: Rules
+    db_session: AsyncSession,
+    classifier: FakeClassifier,
+    rules: Rules,
+    canned_answers: CannedAnswers,
 ) -> TicketProcessor:
     return TicketProcessor(
         db_session,
@@ -39,15 +40,18 @@ def make_processor(
         TicketEventRepository(db_session),
         classifier,
         rules,
-        CannedAnswers({"age_limit": AGE_LIMIT_ANSWER}),
+        canned_answers,
     )
 
 
 @pytest.fixture
 def processor(
-    db_session: AsyncSession, classifier: FakeClassifier, rules: Rules
+    db_session: AsyncSession,
+    classifier: FakeClassifier,
+    rules: Rules,
+    canned_answers: CannedAnswers,
 ) -> TicketProcessor:
-    return make_processor(db_session, classifier, rules)
+    return make_processor(db_session, classifier, rules, canned_answers)
 
 
 @pytest.fixture
@@ -107,6 +111,7 @@ async def test_confident_faq_gets_its_canned_answer(
     classifier: FakeClassifier,
     db_session: AsyncSession,
     customer: User,
+    canned_answers: CannedAnswers,
 ) -> None:
     text = "What is the age limit to open an account?"
     classifier.answer(text, "age_limit", confidence=0.95)
@@ -122,7 +127,7 @@ async def test_confident_faq_gets_its_canned_answer(
     assert ticket.classifier_version == "fake-classifier"
     assert ticket.due_at is None  # el plazo es para la cola humana
     assert await messages_of(db_session, ticket) == [
-        (MessageAuthor.SYSTEM, AGE_LIMIT_ANSWER)
+        (MessageAuthor.SYSTEM, canned_answers.for_intent("age_limit"))
     ]
     assert await transitions_of(db_session, ticket) == [
         ("received", "processing", None),
@@ -135,6 +140,7 @@ async def test_rag_intent_uses_its_canned_answer_while_rag_is_off(
     classifier: FakeClassifier,
     db_session: AsyncSession,
     customer: User,
+    canned_answers: CannedAnswers,
 ) -> None:
     text = "My card payment was declined"
     classifier.answer(text, "declined_card_payment")
@@ -144,9 +150,8 @@ async def test_rag_intent_uses_its_canned_answer_while_rag_is_off(
 
     assert ticket.status == TicketStatus.ANSWERED
     assert ticket.route_reason == CANNED_RAG_DISABLED
-    # Sin policies/canned/declined_card_payment.md todavía: la provisional.
     assert await messages_of(db_session, ticket) == [
-        (MessageAuthor.SYSTEM, PROVISIONAL_ANSWER)
+        (MessageAuthor.SYSTEM, canned_answers.for_intent("declined_card_payment"))
     ]
 
 
@@ -282,13 +287,17 @@ async def test_error_halfway_does_not_leave_partial_changes(
     classifier: FakeClassifier,
     rules: Rules,
     customer: User,
+    canned_answers: CannedAnswers,
 ) -> None:
     # Con el RAG activado (v2) y sin RAG implementado, falla después de haber
     # rellenado intent, prioridad...: el rollback los descarta.
     text = "My card payment was declined"
     classifier.answer(text, "declined_card_payment")
     processor = make_processor(
-        db_session, classifier, rules.model_copy(update={"rag_enabled": True})
+        db_session,
+        classifier,
+        rules.model_copy(update={"rag_enabled": True}),
+        canned_answers,
     )
     ticket = await process(
         processor, db_session, await new_ticket(db_session, customer, text)

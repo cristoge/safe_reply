@@ -13,7 +13,8 @@ from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import AppError
 from revision_rag.db.cache import RedisClient, build_redis
 from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
-from revision_rag.triage.answers import CannedAnswers
+from revision_rag.models.enums import Route
+from revision_rag.triage.answers import CannedAnswers, CannedAnswersError
 from revision_rag.triage.rules import Rules, load_rules
 
 
@@ -21,7 +22,8 @@ def load_triage(settings: Settings) -> tuple[Rules, JoblibClassifier, CannedAnsw
     """Reglas, modelo y respuestas predefinidas, comprobados entre sí.
 
     Lanza si algo falta o no cuadra: mejor no arrancar que clasificar con un
-    modelo que predice intenciones que el YAML no conoce (o al revés).
+    modelo que predice intenciones que el YAML no conoce (o al revés), o que
+    responder a una intención de IA sin su respuesta revisada.
     """
     rules = load_rules(settings.rules_path)
     classifier = JoblibClassifier.load(settings.classifier_path)
@@ -33,7 +35,19 @@ def load_triage(settings: Settings) -> tuple[Rules, JoblibClassifier, CannedAnsw
             f" (solo en el modelo: {unknown} · solo en el YAML: {untrained})"
         )
         raise ClassifierLoadError(msg)
-    return rules, classifier, CannedAnswers.from_dir(settings.canned_dir)
+    answers = CannedAnswers.from_dir(settings.canned_dir)
+    ai_intents = {name for name, i in rules.intents.items() if i.route == Route.AI}
+    if answers.intents != ai_intents:
+        # Una que sobra es un nombre mal escrito o una intención de persona: la
+        # primera nunca se enviaría y la segunda no se debe enviar.
+        missing = sorted(ai_intents - answers.intents)
+        extra = sorted(answers.intents - ai_intents)
+        msg = (
+            f"{settings.canned_dir} no tiene una respuesta por intención de IA"
+            f" (faltan: {missing} · sobran: {extra})"
+        )
+        raise CannedAnswersError(msg)
+    return rules, classifier, answers
 
 
 @asynccontextmanager

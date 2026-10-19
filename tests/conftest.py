@@ -37,6 +37,7 @@ get_settings.cache_clear()
 
 ALEMBIC_INI = Path(__file__).parents[1] / "alembic.ini"
 RULES_PATH = Path(__file__).parents[1] / "rules" / "intents.yaml"
+CANNED_DIR = Path(__file__).parents[1] / "policies" / "canned"
 
 
 async def _recreate_test_database() -> None:
@@ -120,10 +121,10 @@ def classifier(rules: Rules) -> FakeClassifier:
     return FakeClassifier(frozenset(rules.intents))
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
 def canned_answers() -> CannedAnswers:
-    """Sin respuestas revisadas: todas usan la provisional (como antes del S6)."""
-    return CannedAnswers({})
+    """Las respuestas reales (policies/canned/)."""
+    return CannedAnswers.from_dir(CANNED_DIR)
 
 
 @pytest.fixture
