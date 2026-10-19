@@ -22,10 +22,11 @@ from revision_rag.core.security import (
     verify_password,
 )
 from revision_rag.models import RefreshToken, User
+from revision_rag.models.enums import UserRole
 from revision_rag.repositories.refresh_token import RefreshTokenRepository
 from revision_rag.repositories.user import UserRepository
 from revision_rag.schemas.auth import LoginRequest, TokenResponse
-from revision_rag.schemas.user import UserCreate
+from revision_rag.schemas.user import AgentCreate, UserCreate
 
 
 class AuthService:
@@ -44,10 +45,23 @@ class AuthService:
         self.settings = settings
 
     async def register(self, data: UserCreate) -> User:
+        # Siempre cliente: el rol no viene en el body (UserCreate no lo tiene),
+        # así nadie puede darse permisos de agente registrándose.
+        return await self._create_user(data, role=UserRole.CUSTOMER, phone=data.phone)
+
+    async def create_agent(self, data: AgentCreate) -> User:
+        """Solo lo llama scripts/create_agent.py. Ninguna ruta de la API lo expone."""
+        return await self._create_user(data, role=UserRole.AGENT, phone=None)
+
+    async def _create_user(
+        self, data: AgentCreate | UserCreate, *, role: UserRole, phone: str | None
+    ) -> User:
         user = User(
             email=data.email,
             hashed_password=await hash_password(data.password),
             display_name=data.display_name,
+            role=role,
+            phone=phone,
         )
         try:
             await self.users.add(user)

@@ -4,19 +4,22 @@ from httpx import AsyncClient
 from revision_rag.core.config import get_settings
 
 REGISTER_URL = "/api/v1/auth/register"
+PHONE = "+34600123456"
 
 
 async def test_register_returns_201_with_the_user(client: AsyncClient) -> None:
     response = await client.post(
         REGISTER_URL,
-        json={"email": "Cristo@Test.com", "password": "contraseña123"},
+        json={"email": "Cristo@Test.com", "password": "contraseña123", "phone": PHONE},
     )
 
     assert response.status_code == 201
     body = response.json()
     assert body["email"] == "cristo@test.com"
     assert body["display_name"] is None
-    assert set(body) == {"id", "email", "display_name", "created_at"}
+    assert body["role"] == "customer"
+    assert body["phone"] == PHONE
+    assert set(body) == {"id", "email", "display_name", "role", "phone", "created_at"}
 
 
 async def test_register_response_never_includes_the_password(
@@ -24,7 +27,7 @@ async def test_register_response_never_includes_the_password(
 ) -> None:
     response = await client.post(
         REGISTER_URL,
-        json={"email": "cristo@test.com", "password": "contraseña123"},
+        json={"email": "cristo@test.com", "password": "contraseña123", "phone": PHONE},
     )
 
     assert "password" not in response.text
@@ -32,7 +35,7 @@ async def test_register_response_never_includes_the_password(
 
 
 async def test_register_with_existing_email_returns_409(client: AsyncClient) -> None:
-    payload = {"email": "cristo@test.com", "password": "contraseña123"}
+    payload = {"email": "cristo@test.com", "password": "contraseña123", "phone": PHONE}
     await client.post(REGISTER_URL, json=payload)
 
     response = await client.post(
@@ -46,12 +49,21 @@ async def test_register_with_existing_email_returns_409(client: AsyncClient) -> 
 @pytest.mark.parametrize(
     "payload",
     [
-        {"email": "no-es-un-email", "password": "contraseña123"},
-        {"email": "cristo@test.com", "password": "corta"},
-        {"email": "cristo@test.com"},
-        {"password": "contraseña123"},
+        {"email": "no-es-un-email", "password": "contraseña123", "phone": PHONE},
+        {"email": "cristo@test.com", "password": "corta", "phone": PHONE},
+        {"email": "cristo@test.com", "phone": PHONE},
+        {"password": "contraseña123", "phone": PHONE},
+        {"email": "cristo@test.com", "password": "contraseña123"},
+        {"email": "cristo@test.com", "password": "contraseña123", "phone": "600123456"},
     ],
-    ids=["email inválido", "contraseña corta", "sin contraseña", "sin email"],
+    ids=[
+        "email inválido",
+        "contraseña corta",
+        "sin contraseña",
+        "sin email",
+        "sin teléfono",
+        "teléfono sin prefijo",
+    ],
 )
 async def test_register_with_invalid_data_returns_422(
     client: AsyncClient, payload: dict[str, str]
@@ -61,22 +73,39 @@ async def test_register_with_invalid_data_returns_422(
     assert response.status_code == 422
 
 
+async def test_register_cannot_create_an_agent(client: AsyncClient) -> None:
+    # UserCreate no tiene campo role: Pydantic ignora el que se cuele en el body.
+    response = await client.post(
+        REGISTER_URL,
+        json={
+            "email": "cristo@test.com",
+            "password": "contraseña123",
+            "phone": PHONE,
+            "role": "agent",
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["role"] == "customer"
+
+
 LOGIN_URL = "/api/v1/auth/login"
 REFRESH_URL = "/api/v1/auth/refresh"
 LOGOUT_URL = "/api/v1/auth/logout"
 CREDENTIALS = {"email": "cristo@test.com", "password": "contraseña123"}
+REGISTER_DATA = CREDENTIALS | {"phone": PHONE}
 
 
 async def login(client: AsyncClient) -> dict[str, str]:
     """Registra al usuario de CREDENTIALS, hace login y devuelve los tokens."""
-    await client.post(REGISTER_URL, json=CREDENTIALS)
+    await client.post(REGISTER_URL, json=REGISTER_DATA)
     response = await client.post(LOGIN_URL, json=CREDENTIALS)
     assert response.status_code == 200
     return response.json()
 
 
 async def test_login_returns_the_tokens(client: AsyncClient) -> None:
-    await client.post(REGISTER_URL, json=CREDENTIALS)
+    await client.post(REGISTER_URL, json=REGISTER_DATA)
 
     # El email se normaliza también en el login.
     response = await client.post(
@@ -93,7 +122,7 @@ async def test_login_returns_the_tokens(client: AsyncClient) -> None:
 async def test_login_gives_the_same_error_for_wrong_password_and_unknown_email(
     client: AsyncClient,
 ) -> None:
-    await client.post(REGISTER_URL, json=CREDENTIALS)
+    await client.post(REGISTER_URL, json=REGISTER_DATA)
 
     wrong_password = await client.post(
         LOGIN_URL, json={**CREDENTIALS, "password": "incorrecta"}

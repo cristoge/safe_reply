@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado del proyecto
 
-El repo está **cambiando de dominio**: empezó como un RAG de apuntes (proyectos, documentos, chunks) y se está convirtiendo en un **sistema de tickets con IA para un banco digital ficticio**. El dominio de apuntes ya se ha borrado (S2, migración `66a27c1f8fdc`; sigue en el historial de Git). El esquema de la v1 son 6 tablas: `users` (+ `role`, `phone`), `refresh_tokens`, `tickets`, `ticket_messages`, `ticket_corrections` y `ticket_events` (migración `d29766035959`). El primer mensaje del cliente vive en `tickets.text` (inmutable); `ticket_messages` es la conversación posterior.
+El repo está **cambiando de dominio**: empezó como un RAG de apuntes (proyectos, documentos, chunks) y se está convirtiendo en un **sistema de tickets con IA para un banco digital ficticio**. El dominio de apuntes ya se ha borrado (S2, migración `66a27c1f8fdc`; sigue en el historial de Git). El esquema de la v1 son 6 tablas: `users` (+ `role`, `phone`), `refresh_tokens`, `tickets`, `ticket_messages`, `ticket_corrections` y `ticket_events` (migración `d29766035959`). El primer mensaje del cliente vive en `tickets.text` (inmutable); `ticket_messages` es la conversación posterior. Hecho hasta el S3: registro de clientes con teléfono (E.164), agentes solo por script, y `POST/GET /tickets` (rate limit, `Idempotency-Key`, historial tipo chat). Los tickets se quedan en `received`: clasificarlos y enrutarlos es el S4.
 
 El diseño y el plan viven fuera del repo, en el vault de Obsidian del usuario:
 - `~/vault/Prog/PROYECTOS/revision_rag/Sistema de tickets con IA - diseño.md` — flujo, reglas, esquema de BD (apartado 8), problemas previstos (14), resultados de `ml/` (3.4 y 3.5).
@@ -20,6 +20,7 @@ Python 3.14 y uv (versiones fijadas en `mise.toml`). Todo desde la raíz del rep
 mise run docker:up        # Postgres (pgvector) + Redis, espera a que estén healthy
 mise run fastapi          # docker:up + uvicorn --reload → http://127.0.0.1:8000/docs
 mise run docker:down
+mise run agent:create -- agente@banco.com --name Ana   # los agentes solo se crean así (pide la contraseña)
 
 uv run pytest                                          # toda la batería
 uv run pytest tests/unit/test_intent_rules.py          # un archivo
@@ -44,12 +45,12 @@ uv run python ml/try_router.py "my card was stolen"   # un ticket a mano: cada p
 
 Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `services` → `repositories` → `models`.
 
-- **`api/deps.py`** construye repositorios y servicios por petición con `Depends`. FastAPI cachea cada dependencia dentro de una petición, así que repositorio y servicio **comparten la misma `AsyncSession`** (una transacción). Los alias `Annotated` (`CurrentUser`, `DbSession`, `Pagination`...) son la forma de inyectar.
+- **`api/deps.py`** construye repositorios y servicios por petición con `Depends`. FastAPI cachea cada dependencia dentro de una petición, así que repositorio y servicio **comparten la misma `AsyncSession`** (una transacción). Los alias `Annotated` (`CurrentUser`, `DbSession`, `Pagination`...) son la forma de inyectar. El rol se comprueba ahí con `AgentUser` / `CustomerUser` (`require_agent` / `require_customer` → **403**), no en los servicios.
 - **Los servicios hacen `commit()`; los repositorios nunca** (solo `flush()`).
 - **Errores:** los servicios lanzan subclases de `AppError` (`core/exceptions.py`) con `status_code` y `detail`; un único handler en `main.py` las traduce a HTTP. Los servicios no saben nada de HTTP.
 - **Patrón del dueño (IDOR):** las consultas de los repositorios filtran siempre por el dueño (`get_for_user`), y lo ajeno da **404, no 403** (no confirmar que existe). La comprobación se centraliza en una dependencia (`get_owned_<recurso>` → alias `Owned<Recurso>`), como hacía `get_owned_project` antes del S2. Los tickets siguen el mismo patrón por `customer_id`.
 - **Auth:** JWT de acceso de corta duración + refresh tokens opacos guardados como SHA-256 y **rotados** en cada uso (`FOR UPDATE`). Login con hash ficticio cuando el email no existe (contra timing attacks). argon2 en otro hilo (`asyncio.to_thread`).
-- **Redis** (`db/cache.py`): un cliente compartido en `app.state`; ahora solo se usa en `/health`. Su papel previsto es cola, rate limiting e idempotencia, no caché de respuestas.
+- **Redis** (`db/cache.py`): un cliente compartido en `app.state`. Solo para lo que no necesita escribir en Postgres: el rate limiting (`services/rate_limiter.py`, ventana fija con `INCR` + `EXPIRE NX`) y, en la v2, la cola (ARQ). Nunca caché de respuestas. La `Idempotency-Key` de `POST /tickets` vive en Postgres (`tickets.idempotency_key` + índice único parcial), en la misma transacción que el ticket: Postgres es la fuente de verdad.
 
 ### Convenciones de modelos y migraciones
 - PKs `uuid.uuid7` generadas en Python (ordenadas por tiempo: sirven para desempatar `ORDER BY created_at, id`; `now()` de Postgres es la hora de inicio de la transacción, así que varias filas de una misma transacción comparten `created_at`).
@@ -63,7 +64,7 @@ Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `
 - `tests/unit` (funciones puras), `tests/integration` (repositorios/servicios contra Postgres real), `tests/api` (HTTP con `httpx.ASGITransport`, sin servidor).
 - `db_session`: cada test dentro de una transacción con `join_transaction_mode="create_savepoint"` que se deshace al final → los `commit()` del código probado no persisten.
 - Redis de tests = base de datos 1 (`FLUSHDB` por test); la de desarrollo es la 0.
-- `tests/api/conftest.py`: `login_headers()` / `auth_headers` / `other_auth_headers` (segundo usuario para probar el patrón del dueño).
+- `tests/api/conftest.py`: `login_headers()` / `auth_headers` / `other_auth_headers` (clientes con teléfono; el segundo, para probar el patrón del dueño) y `agent_headers` (agente creado directamente en la BD, porque por la API no se puede).
 
 ## `ml/` y las reglas de negocio
 

@@ -12,6 +12,7 @@ from sqlalchemy import (
     String,
     Text,
 )
+from sqlalchemy import text as sql_text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from revision_rag.db.base import Base, TimestampMixin
@@ -72,6 +73,11 @@ class Ticket(TimestampMixin, Base):
     # cola se ordena por esto y no por prioridad: así un ticket low antiguo
     # acaba pasando delante de los high nuevos (sin inanición).
     due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # La cabecera Idempotency-Key con la que se creó (opcional). En Postgres y
+    # no en Redis: se guarda en la misma transacción que el ticket, así no puede
+    # existir uno sin la otra (con Redis, si el proceso moría entre el commit y
+    # guardar la key, un reintento creaba un segundo ticket).
+    idempotency_key: Mapped[str | None] = mapped_column(String(255))
 
     customer: Mapped[User] = relationship(
         back_populates="tickets", foreign_keys=[customer_id], lazy="raise"
@@ -98,4 +104,14 @@ class Ticket(TimestampMixin, Base):
         Index("ix_tickets_customer_id_created_at", "customer_id", "created_at"),
         # La cola humana: WHERE status = 'in_human_queue' ORDER BY due_at.
         Index("ix_tickets_status_due_at", "status", "due_at"),
+        # sql_text: dentro de la clase, "text" es la columna del mensaje.
+        # Una key por cliente, y solo cuando viene: es lo que impide que dos
+        # peticiones simultáneas con la misma key creen dos tickets.
+        Index(
+            "uq_tickets_customer_id_idempotency_key",
+            "customer_id",
+            "idempotency_key",
+            unique=True,
+            postgresql_where=sql_text("idempotency_key IS NOT NULL"),
+        ),
     )

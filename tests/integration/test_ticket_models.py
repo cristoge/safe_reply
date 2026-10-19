@@ -131,6 +131,27 @@ async def test_enum_columns_have_a_check_in_postgres(
         )
 
 
+async def test_idempotency_key_is_unique_per_customer(
+    db_session: AsyncSession, customer: User, agent: User
+) -> None:
+    other = User(email="other@test.com", hashed_password="x", phone="+34600000000")
+    db_session.add_all(
+        [
+            # Sin key, todos los que hagan falta: el índice es parcial.
+            Ticket(customer=customer, text="a"),
+            Ticket(customer=customer, text="b"),
+            Ticket(customer=customer, text="c", idempotency_key="k"),
+            # La misma key, de otro cliente.
+            Ticket(customer=other, text="d", idempotency_key="k"),
+        ]
+    )
+    await db_session.flush()
+
+    db_session.add(Ticket(customer=customer, text="e", idempotency_key="k"))
+    with pytest.raises(IntegrityError, match="uq_tickets_customer_id_idempotency_key"):
+        await db_session.flush()
+
+
 # --- CHECK de ticket_messages -------------------------------------------------
 
 

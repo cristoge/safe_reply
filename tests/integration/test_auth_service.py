@@ -12,12 +12,14 @@ from revision_rag.core.exceptions import (
 )
 from revision_rag.core.security import hash_refresh_token, verify_password
 from revision_rag.models import User
+from revision_rag.models.enums import UserRole
 from revision_rag.repositories.refresh_token import RefreshTokenRepository
 from revision_rag.repositories.user import UserRepository
 from revision_rag.schemas.auth import LoginRequest
-from revision_rag.schemas.user import UserCreate
+from revision_rag.schemas.user import AgentCreate, UserCreate
 from revision_rag.services.auth import AuthService
 
+PHONE = "+34600123456"
 LOGIN = LoginRequest(email="cristo@test.com", password="contraseña123")
 
 
@@ -43,7 +45,7 @@ def service(
 @pytest.fixture
 async def user(service: AuthService) -> User:
     return await service.register(
-        UserCreate(email=LOGIN.email, password=LOGIN.password)
+        UserCreate(email=LOGIN.email, password=LOGIN.password, phone=PHONE)
     )
 
 
@@ -52,7 +54,10 @@ async def test_register_creates_user_with_hashed_password(
 ) -> None:
     user = await service.register(
         UserCreate(
-            email="Cristo@Test.com", password="contraseña123", display_name="Cristo"
+            email="Cristo@Test.com",
+            password="contraseña123",
+            display_name="Cristo",
+            phone=PHONE,
         )
     )
 
@@ -62,24 +67,45 @@ async def test_register_creates_user_with_hashed_password(
     assert saved.email == "cristo@test.com"
     assert saved.hashed_password != "contraseña123"
     assert await verify_password("contraseña123", saved.hashed_password)
+    assert saved.role == UserRole.CUSTOMER
+    assert saved.phone == PHONE
 
 
 async def test_register_with_existing_email_fails_and_keeps_the_first_user(
     service: AuthService, users: UserRepository
 ) -> None:
     first = await service.register(
-        UserCreate(email="cristo@test.com", password="contraseña123")
+        UserCreate(email="cristo@test.com", password="contraseña123", phone=PHONE)
     )
 
     with pytest.raises(EmailAlreadyRegisteredError):
         await service.register(
-            UserCreate(email="CRISTO@test.com", password="otra12345")
+            UserCreate(email="CRISTO@test.com", password="otra12345", phone=PHONE)
         )
 
     # El rollback solo deshace el registro fallido: el primero ya estaba confirmado.
     saved = await users.get_by_email("cristo@test.com")
     assert saved is not None
     assert saved.id == first.id
+
+
+async def test_create_agent(service: AuthService, users: UserRepository) -> None:
+    await service.create_agent(
+        AgentCreate(email="Agente@Banco.com", password="contraseña123")
+    )
+
+    saved = await users.get_by_email("agente@banco.com")
+    assert saved is not None
+    assert saved.role == UserRole.AGENT
+    assert saved.phone is None
+    assert await verify_password("contraseña123", saved.hashed_password)
+
+
+async def test_create_agent_with_existing_email_fails(
+    service: AuthService, user: User
+) -> None:
+    with pytest.raises(EmailAlreadyRegisteredError):
+        await service.create_agent(AgentCreate(email=user.email, password="otra12345"))
 
 
 async def test_login_returns_tokens_and_stores_only_the_refresh_hash(
@@ -129,7 +155,7 @@ async def test_reusing_a_rotated_token_revokes_every_token_of_that_user(
     service: AuthService, user: User
 ) -> None:
     other_user = await service.register(
-        UserCreate(email="otra@test.com", password="contraseña123")
+        UserCreate(email="otra@test.com", password="contraseña123", phone=PHONE)
     )
     other_user_tokens = await service.login(
         LoginRequest(email=other_user.email, password="contraseña123")

@@ -24,6 +24,11 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 15
     refresh_token_expire_days: int = 7
 
+    # Rate limiting de POST /tickets (ventana fija en Redis). Cada ticket que va
+    # a persona es una llamada: el límite protege al equipo de soporte del spam.
+    ticket_rate_limit: int = 5
+    ticket_rate_window_seconds: int = 60 * 60
+
 
 @lru_cache
 def get_settings() -> Settings:

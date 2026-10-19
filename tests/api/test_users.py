@@ -11,7 +11,8 @@ ME_URL = "/api/v1/users/me"
 
 async def register(client: AsyncClient, email: str) -> None:
     response = await client.post(
-        "/api/v1/auth/register", json={"email": email, "password": "contraseña123"}
+        "/api/v1/auth/register",
+        json={"email": email, "password": "contraseña123", "phone": "+34600123456"},
     )
     assert response.status_code == 201
 

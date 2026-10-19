@@ -5,19 +5,27 @@ get_db aparezca en varios sitios de la cadena, se ejecuta una sola vez, así que
 el repositorio y el servicio comparten la misma sesión (y la misma transacción).
 """
 
+import uuid
 from typing import Annotated
 
 from fastapi import Depends, Query
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from revision_rag.core.config import Settings, get_settings
-from revision_rag.core.exceptions import NotAuthenticatedError
+from revision_rag.core.exceptions import ForbiddenError, NotAuthenticatedError
+from revision_rag.db.cache import RedisClient
 from revision_rag.db.session import DbSession
-from revision_rag.models import User
+from revision_rag.models import Ticket, User
+from revision_rag.models.enums import UserRole
 from revision_rag.repositories.refresh_token import RefreshTokenRepository
+from revision_rag.repositories.ticket import TicketRepository
+from revision_rag.repositories.ticket_event import TicketEventRepository
+from revision_rag.repositories.ticket_message import TicketMessageRepository
 from revision_rag.repositories.user import UserRepository
 from revision_rag.schemas.pagination import PaginationParams
 from revision_rag.services.auth import AuthService
+from revision_rag.services.rate_limiter import RateLimiter
+from revision_rag.services.ticket import TicketService
 from revision_rag.services.user import UserService
 
 SettingsDep = Annotated[Settings, Depends(get_settings)]
@@ -76,3 +84,62 @@ async def get_current_user(
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+# El rol se comprueba aquí y no en cada servicio: la ruta lo declara con el alias
+# (AgentUser / CustomerUser) y la comprobación está en un único sitio.
+async def require_agent(user: CurrentUser) -> User:
+    if user.role != UserRole.AGENT:
+        raise ForbiddenError
+    return user
+
+
+AgentUser = Annotated[User, Depends(require_agent)]
+
+
+async def require_customer(user: CurrentUser) -> User:
+    # Los tickets son siempre de un cliente: un agente no abre tickets.
+    if user.role != UserRole.CUSTOMER:
+        raise ForbiddenError
+    return user
+
+
+CustomerUser = Annotated[User, Depends(require_customer)]
+
+
+def get_ticket_rate_limiter(redis: RedisClient, settings: SettingsDep) -> RateLimiter:
+    return RateLimiter(
+        redis,
+        limit=settings.ticket_rate_limit,
+        window_seconds=settings.ticket_rate_window_seconds,
+    )
+
+
+def get_ticket_service(
+    db: DbSession,
+    rate_limiter: Annotated[RateLimiter, Depends(get_ticket_rate_limiter)],
+) -> TicketService:
+    return TicketService(
+        db,
+        TicketRepository(db),
+        TicketMessageRepository(db),
+        TicketEventRepository(db),
+        rate_limiter,
+    )
+
+
+TicketServiceDep = Annotated[TicketService, Depends(get_ticket_service)]
+
+
+async def get_owned_ticket(
+    ticket_id: uuid.UUID, customer: CustomerUser, service: TicketServiceDep
+) -> Ticket:
+    """El ticket del {ticket_id} de la URL, solo si es del cliente (si no, 404).
+
+    La reutilizarán todas las rutas del cliente que cuelgan de un ticket
+    (mensajes, escalar en el S5): la comprobación del dueño está en un único sitio.
+    """
+    return await service.get(customer, ticket_id)
+
+
+OwnedTicket = Annotated[Ticket, Depends(get_owned_ticket)]
