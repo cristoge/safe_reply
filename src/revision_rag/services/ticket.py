@@ -1,5 +1,6 @@
 import uuid
 from collections.abc import Sequence
+from datetime import UTC, datetime
 
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -8,19 +9,30 @@ from revision_rag.core.exceptions import (
     IdempotencyKeyReusedError,
     PhoneRequiredError,
     TicketNotFoundError,
+    TicketStateConflictError,
 )
-from revision_rag.models import Ticket, TicketEvent, User
-from revision_rag.models.enums import MessageAuthor, TicketEventType
+from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
+from revision_rag.models.enums import MessageAuthor, TicketEventType, TicketStatus
 from revision_rag.repositories.ticket import TicketRepository
 from revision_rag.repositories.ticket_event import TicketEventRepository
 from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.schemas.ticket import MessageRead, TicketCreate, TicketDetail
+from revision_rag.schemas.ticket import (
+    MessageCreate,
+    MessageRead,
+    TicketCreate,
+    TicketDetail,
+)
 from revision_rag.services.rate_limiter import RateLimiter
 from revision_rag.tasks.queue import TaskQueue
+from revision_rag.triage.answers import CALL_TEMPLATE
+from revision_rag.triage.rules import Rules
+from revision_rag.triage.urgency import due_at, escalated_priority
+
+CUSTOMER_ESCALATED = "customer escalated"
 
 
 class TicketService:
-    """Lo que hace el cliente con sus tickets: abrirlos y consultarlos.
+    """Lo que hace el cliente con sus tickets: abrirlos, consultarlos, contestar y escalar.
 
     Un ticket nuevo se guarda en received y se encola para procesarlo (en la v1,
     InlineTaskQueue lo procesa al momento, dentro de la misma petición).
@@ -34,6 +46,7 @@ class TicketService:
         events: TicketEventRepository,
         rate_limiter: RateLimiter,
         queue: TaskQueue,
+        rules: Rules,
     ) -> None:
         self.session = session
         self.tickets = tickets
@@ -41,6 +54,7 @@ class TicketService:
         self.events = events
         self.rate_limiter = rate_limiter
         self.queue = queue
+        self.rules = rules
 
     async def create(
         self, customer: User, data: TicketCreate, idempotency_key: str | None = None
@@ -138,4 +152,112 @@ class TicketService:
             created_at=ticket.created_at,
             updated_at=ticket.updated_at,
             messages=[first, *(MessageRead.model_validate(m) for m in sent)],
+        )
+
+    async def escalate(self, ticket: Ticket) -> Ticket:
+        """ "I still need help": de answered a la cola humana.
+
+        Si ya está con una persona no hace nada (pulsar dos veces, un
+        reintento): la salida a una persona ya está garantizada.
+        """
+        ticket = await self._lock(ticket.id)
+        if ticket.status in (TicketStatus.IN_HUMAN_QUEUE, TicketStatus.CONTACTED):
+            return ticket
+        self._check_can_write(ticket)
+        await self._escalate(ticket)
+        await self.session.commit()
+        return ticket
+
+    async def reply(self, ticket: Ticket, data: MessageCreate) -> Ticket:
+        """El cliente contesta (apartado 6 › Cuando el cliente contesta).
+
+        Tras una respuesta (answered) es escalar, con su texto. Si ya está con
+        una persona, se adjunta para el agente sin cambiar estado, prioridad ni
+        plazo. No se vuelve a clasificar: fuera de contexto ("it still hasn't
+        arrived") el clasificador falla, y el camino a persona no pasa por
+        ningún modelo.
+        """
+        ticket = await self._lock(ticket.id)
+        self._check_can_write(ticket)
+        await self.messages.add(
+            TicketMessage(
+                ticket_id=ticket.id, author=MessageAuthor.CUSTOMER, content=data.text
+            )
+        )
+        if ticket.status == TicketStatus.ANSWERED:
+            await self._escalate(ticket)
+        else:
+            await self.events.add(
+                TicketEvent(
+                    ticket_id=ticket.id,
+                    event=TicketEventType.CUSTOMER_REPLIED,
+                    actor_id=ticket.customer_id,
+                )
+            )
+        await self.session.commit()
+        return ticket
+
+    async def _lock(self, ticket_id: uuid.UUID) -> Ticket:
+        # El dueño ya lo ha comprobado OwnedTicket; aquí se vuelve a leer con
+        # la fila bloqueada para decidir sobre el estado actual: escalar y
+        # contestar a la vez no pueden escalar dos veces.
+        ticket = await self.tickets.get_for_update(ticket_id)
+        if ticket is None:
+            raise TicketNotFoundError
+        return ticket
+
+    @staticmethod
+    def _check_can_write(ticket: Ticket) -> None:
+        match ticket.status:
+            case TicketStatus.RESOLVED:
+                # Cada ticket es un problema: reabrirlo obligaría a decidir de
+                # nuevo prioridad y plazo.
+                raise TicketStateConflictError(
+                    "El ticket está resuelto: si necesitas algo más, abre uno nuevo"
+                )
+            case TicketStatus.RECEIVED | TicketStatus.PROCESSING:
+                raise TicketStateConflictError(
+                    "El ticket aún se está procesando; inténtalo en unos segundos"
+                )
+            case _:
+                pass
+
+    async def _escalate(self, ticket: Ticket) -> None:
+        """answered → in_human_queue: un nivel más de prioridad y plazo nuevo.
+
+        route y route_reason no cambian: cuentan lo que decidió el sistema
+        (para las métricas de escalados y para las correcciones); escalated_at
+        dice que el cliente no quedó satisfecho.
+        """
+        assert ticket.priority is not None  # un ticket answered ya está procesado
+        now = datetime.now(UTC)
+        priority = escalated_priority(ticket.priority, ticket.priority_reason)
+        ticket.status = TicketStatus.IN_HUMAN_QUEUE
+        ticket.priority = priority.level
+        ticket.priority_reason = priority.reason
+        ticket.escalated_at = now
+        # Desde que escala, no desde que escribió: con el plazo original, un
+        # ticket respondido hace dos días saltaría delante de toda la cola.
+        ticket.due_at = due_at(now, priority.level, self.rules)
+        await self.events.add(
+            TicketEvent(
+                ticket_id=ticket.id,
+                event=TicketEventType.ESCALATED,
+                actor_id=ticket.customer_id,
+            )
+        )
+        await self.events.add(
+            TicketEvent(
+                ticket_id=ticket.id,
+                event=TicketEventType.STATUS_CHANGED,
+                from_status=TicketStatus.ANSWERED,
+                to_status=TicketStatus.IN_HUMAN_QUEUE,
+                actor_id=ticket.customer_id,
+                reason=CUSTOMER_ESCALATED,
+            )
+        )
+        await self.messages.add(
+            TicketMessage(
+                ticket_id=ticket.id, author=MessageAuthor.SYSTEM, content=CALL_TEMPLATE
+            )
         )

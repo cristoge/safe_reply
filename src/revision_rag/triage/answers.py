@@ -25,6 +25,30 @@ PROVISIONAL_ANSWER = (
 )
 
 
+FRAUD_TICKET_TYPE = "security_and_fraud"
+
+
+def unreachable_message(failed_calls: int, ticket_type: str | None) -> str:
+    """Lo que recibe el cliente tras las llamadas fallidas del YAML (S5).
+
+    Que llame él al número de la app encaja con el aviso de vishing: así no
+    puede ser una llamada falsa del banco. Sin "vaya a su sucursal": es un banco
+    digital, no las tiene. Las rutas de la app las fija bank_facts.md (S6).
+    """
+    message = (
+        f"We tried to call you {failed_calls} times but couldn't reach you.\n"
+        "Reply to this message with a good time to call you, or call us yourself "
+        "on the number shown in the app (Help › Contact us)."
+    )
+    if ticket_type == FRAUD_TICKET_TYPE:
+        # Mientras no hablamos con él, lo urgente es parar el daño.
+        message += (
+            "\nIf you think someone is using your card, freeze it now in the app "
+            "(Cards › Freeze card)."
+        )
+    return message
+
+
 class CannedAnswers:
     """Las respuestas predefinidas revisadas, una por intención (policies/canned/).
 

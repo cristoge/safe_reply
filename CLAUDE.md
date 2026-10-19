@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Estado del proyecto
 
-El repo está **cambiando de dominio**: empezó como un RAG de apuntes (proyectos, documentos, chunks) y se está convirtiendo en un **sistema de tickets con IA para un banco digital ficticio**. El dominio de apuntes ya se ha borrado (S2, migración `66a27c1f8fdc`; sigue en el historial de Git). El esquema de la v1 son 6 tablas: `users` (+ `role`, `phone`), `refresh_tokens`, `tickets`, `ticket_messages`, `ticket_corrections` y `ticket_events` (migración `d29766035959`). El primer mensaje del cliente vive en `tickets.text` (inmutable); `ticket_messages` es la conversación posterior. Hecho hasta el S4: registro de clientes con teléfono (E.164), agentes solo por script, `POST/GET /tickets` (rate limit, `Idempotency-Key`, historial tipo chat) y el **procesado sin LLM** dentro del mismo `POST /tickets`: clasificar → reglas → urgencia → router → plantilla de llamada o respuesta predefinida. Siguiente: la cola humana (S5).
+El repo está **cambiando de dominio**: empezó como un RAG de apuntes (proyectos, documentos, chunks) y se está convirtiendo en un **sistema de tickets con IA para un banco digital ficticio**. El dominio de apuntes ya se ha borrado (S2, migración `66a27c1f8fdc`; sigue en el historial de Git). El esquema de la v1 son 6 tablas: `users` (+ `role`, `phone`), `refresh_tokens`, `tickets`, `ticket_messages`, `ticket_corrections` y `ticket_events` (migración `d29766035959`). El primer mensaje del cliente vive en `tickets.text` (inmutable); `ticket_messages` es la conversación posterior. Hecho hasta el S5: registro de clientes con teléfono (E.164), agentes solo por script, `POST/GET /tickets` (rate limit, `Idempotency-Key`, historial tipo chat), el **procesado sin LLM** dentro del mismo `POST /tickets` (clasificar → reglas → urgencia → router → plantilla de llamada o respuesta predefinida) y la **cola humana** (reclamar, llamar, resolver, corregir; el cliente escala o contesta). Siguiente: las respuestas predefinidas (S6) y el cierre de la v1 (S7).
 
 El diseño y el plan viven fuera del repo, en el vault de Obsidian del usuario:
 - `~/vault/Prog/PROYECTOS/revision_rag/Sistema de tickets con IA - diseño.md` — flujo, reglas, esquema de BD (apartado 8), problemas previstos (14), resultados de `ml/` (3.4 y 3.5).
@@ -60,6 +60,15 @@ Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `
 - `triage/` son funciones puras: `rules.py` (YAML validado con Pydantic: un YAML mal formado no carga), `router.py`, `urgency.py` (prioridad final, `priority_reason`, `due_at` solo para la cola humana, desde `created_at`), `answers.py` (`CALL_TEMPLATE` y `CannedAnswers` de `policies/canned/<intent>.md`, con `PROVISIONAL_ANSWER` hasta el S6). Con `rag_enabled: false` (YAML), lo que el router manda al RAG responde con su predefinida.
 - Reglas, modelo y respuestas viven en `app.state` (cargados en el `lifespan`) y se inyectan con `get_rules` / `get_classifier` / `get_canned_answers`.
 
+### Cola humana (S5)
+- Agente (`api/routes/agent.py` → `services/human_queue.py`): `GET /agent/queue` es solo para mirar; se atiende con `POST /agent/queue/claim` ("dame el siguiente" por `due_at`, `FOR UPDATE SKIP LOCKED`; 204 si está vacía). **El agente no elige ticket** (si eligiera, los difíciles esperarían).
+- Reclamado y sin `contacted` durante `human_queue.claim_timeout_hours` (YAML) → reclamable otra vez **en la propia consulta** (`assigned_at < now - X`), sin barrido; queda un evento `unassigned` + `assigned`.
+- Las acciones (`contacted`, `call-failed`, `resolve`) bloquean la fila (`get_for_update`) y solo las hace el agente asignado (**403** si no; los agentes ven todos los tickets, no hay nada que esconder con un 404). Repetirlas no hace nada (idempotentes por el estado), salvo `call-failed`.
+- `max_failed_calls` (YAML) llamadas fallidas → mensaje `unreachable_message` (+ "freeze your card" en `security_and_fraud`), el ticket vuelve a la cola sin asignar y evento `unassigned` con `reason="customer unreachable"`: desde ese evento la cuenta empieza de cero (`count_failed_calls`, por id uuid7). Un reclamado y abandonado **no** la reinicia.
+- Resolver sin haber contactado: sí, con motivo obligatorio (422 si falta).
+- Cliente: `POST /tickets/{id}/escalate` ("I still need help") y `POST /tickets/{id}/messages`. Desde `answered` → escalar (prioridad +1 como mucho high, `escalated_at`, `due_at` desde que escala, plantilla de llamada; `route`/`route_reason` no cambian). En `in_human_queue`/`contacted`, contestar se adjunta (evento `customer_replied`). `resolved` → 409 "abre uno nuevo"; `received`/`processing` → 409. Escalar algo que ya está con una persona no hace nada.
+- Correcciones: `POST /agent/tickets/{id}/corrections` (cualquier agente, cualquier estado); los `predicted_*` se copian del ticket; una `corrected_intent` que no está en el YAML → 422.
+
 ### Convenciones de modelos y migraciones
 - PKs `uuid.uuid7` generadas en Python (ordenadas por tiempo: sirven para desempatar `ORDER BY created_at, id`; `now()` de Postgres es la hora de inicio de la transacción, así que varias filas de una misma transacción comparten `created_at`).
 - Enums con `str_enum()` (`models/enums.py`): varchar + `CHECK`, nunca ENUM nativo de Postgres. Los valores de reglas de negocio (`intent`, `ticket_type`) van como varchar **sin** `CHECK`: la lista válida es el YAML.
@@ -73,7 +82,8 @@ Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `
 - `db_session`: cada test dentro de una transacción con `join_transaction_mode="create_savepoint"` que se deshace al final → los `commit()` del código probado no persisten.
 - Redis de tests = base de datos 1 (`FLUSHDB` por test); la de desarrollo es la 0.
 - `ASGITransport` no ejecuta el `lifespan`: el `client` de `tests/conftest.py` sustituye `get_rules` (el YAML real), `get_classifier` (`FakeClassifier` de `tests/fakes.py`: duda por defecto → persona; `classifier.answer(text, intent)` fija una predicción; `classifier.error` simula un fallo) y `get_canned_answers`. `pythonpath = ["tests"]` (pytest) y `extraPaths` (basedpyright) permiten `from fakes import ...`. Ningún test necesita `models/`.
-- `tests/api/conftest.py`: `login_headers()` / `auth_headers` / `other_auth_headers` (clientes con teléfono; el segundo, para probar el patrón del dueño) y `agent_headers` (agente creado directamente en la BD, porque por la API no se puede).
+- `tests/api/conftest.py`: `login_headers()` / `auth_headers` / `other_auth_headers` (clientes con teléfono; el segundo, para probar el patrón del dueño) y `agent_headers` / `other_agent_headers` (agentes creados directamente en la BD, porque por la API no se puede).
+- `tests/integration/test_claim_concurrency.py` usa conexiones reales (no `db_session`): sus datos se confirman de verdad y los borra al terminar.
 
 ## `ml/` y las reglas de negocio
 

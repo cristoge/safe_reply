@@ -88,3 +88,29 @@ class IdempotencyKeyReusedError(AppError):
     # ticket anterior escondería que ha mandado otra cosa.
     status_code = 422
     detail = "Esa Idempotency-Key ya se usó con otro contenido"
+
+
+class TicketStateConflictError(AppError):
+    # La acción no vale en el estado actual del ticket (resolver uno ya
+    # resuelto por otro, contestar en uno cerrado...). El detail dice cuál.
+    status_code = 409
+    detail = "El ticket no está en un estado que permita esta acción"
+
+
+class TicketNotAssignedError(AppError):
+    # 403 y no 404: los agentes ven todos los tickets, así que no hay nada que
+    # esconder; lo que falta es haberlo reclamado.
+    status_code = 403
+    detail = "Este ticket no está asignado a ti: reclámalo antes"
+
+
+class ResolutionReasonRequiredError(AppError):
+    # Resolver sin haber hablado con el cliente se puede (spam, "hello"...),
+    # pero tiene que quedar por qué.
+    status_code = 422
+    detail = "Para resolver un ticket sin haber contactado con el cliente hace falta un motivo"
+
+
+class UnknownIntentError(AppError):
+    status_code = 422
+    detail = "Esa intención no existe en rules/intents.yaml"

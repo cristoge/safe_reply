@@ -56,3 +56,16 @@ def due_at(start: datetime, level: int, rules: Rules) -> datetime:
     """Plazo para atender el ticket: start + las horas de su prioridad (YAML)."""
     hours: int = getattr(rules.due_hours, PRIORITY_NAMES[level])
     return start + timedelta(hours=hours)
+
+
+def escalated_priority(level: int, reason: str | None) -> Priority:
+    """ "I still need help": un nivel más que la que tenía (como mucho, high).
+
+    El motivo anterior se conserva: el agente ve de dónde venía la prioridad.
+    """
+    if level == HIGHEST:
+        return Priority(level, f"{reason} (escalated)")
+    raised = level + 1
+    return Priority(
+        raised, f"{reason}, raised to {PRIORITY_NAMES[raised]} by escalation"
+    )

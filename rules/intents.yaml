@@ -59,6 +59,15 @@ urgency:
   repeat_tickets: 3
   repeat_window_hours: 24
 
+# Cola humana (S5).
+human_queue:
+  # Reclamado y sin llegar a contacted en este tiempo → otro agente puede
+  # reclamarlo. Se comprueba en la propia consulta de reclamar, sin barrido.
+  claim_timeout_hours: 2
+  # Llamadas fallidas seguidas → mensaje al cliente ("we tried to call you…") y
+  # el ticket vuelve a la cola sin asignar.
+  max_failed_calls: 3
+
 # El RAG llega en la v2. Mientras esté apagado, las intenciones con answer_mode
 # rag que el router manda al RAG responden con su predefinida (genérica a
 # propósito: "si no es tu caso, responde y te llamamos").

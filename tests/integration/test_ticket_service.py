@@ -16,6 +16,7 @@ from revision_rag.repositories.ticket_message import TicketMessageRepository
 from revision_rag.schemas.ticket import TicketCreate
 from revision_rag.services.rate_limiter import RateLimiter
 from revision_rag.services.ticket import TicketService
+from revision_rag.triage.rules import Rules
 
 TEXT = "My card hasn't arrived yet"
 
@@ -37,7 +38,7 @@ def queue() -> RecordingQueue:
 
 @pytest.fixture
 def service(
-    db_session: AsyncSession, redis: Redis, queue: RecordingQueue
+    db_session: AsyncSession, redis: Redis, queue: RecordingQueue, rules: Rules
 ) -> TicketService:
     return TicketService(
         db_session,
@@ -46,6 +47,7 @@ def service(
         TicketEventRepository(db_session),
         RateLimiter(redis, limit=5, window_seconds=60),
         queue,
+        rules,
     )
 
 

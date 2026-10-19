@@ -96,11 +96,17 @@ class UrgencyConfig(_Frozen):
         return _compile_all(self.patterns, "urgency.patterns")
 
 
+class HumanQueueConfig(_Frozen):
+    claim_timeout_hours: int = Field(gt=0)
+    max_failed_calls: int = Field(gt=0)
+
+
 class Rules(_Frozen):
     router: RouterConfig
     sensitive_patterns: list[str] = Field(min_length=1)
     due_hours: DueHours
     urgency: UrgencyConfig
+    human_queue: HumanQueueConfig
     rag_enabled: bool = False
     intents: dict[str, IntentRule] = Field(min_length=1)
 

@@ -24,6 +24,7 @@ RULES = Rules.model_validate(
             "repeat_tickets": 3,
             "repeat_window_hours": 24,
         },
+        "human_queue": {"claim_timeout_hours": 2, "max_failed_calls": 3},
         "intents": {
             "age_limit": {  # FAQ con predefinida
                 "ticket_type": "account_and_personal_details",

@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 import pytest
 from fakes import FakeClassifier
@@ -8,7 +9,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from revision_rag.core.config import get_settings
 from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
-from revision_rag.models.enums import MessageAuthor, MessageStatus, TicketEventType
+from revision_rag.models.enums import (
+    MessageAuthor,
+    MessageStatus,
+    TicketEventType,
+    TicketStatus,
+)
 from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
 from revision_rag.triage.answers import CALL_TEMPLATE, PROVISIONAL_ANSWER
 
@@ -372,3 +378,190 @@ async def test_agents_use_their_own_endpoints(
     response = await client.get(f"{TICKETS_URL}{path}", headers=agent_headers)
 
     assert response.status_code == 403
+
+
+# --- POST /tickets/{id}/escalate y /messages ----------------------------------
+
+FAQ = "What is the age limit to open an account?"
+
+
+async def answered_ticket(
+    client: AsyncClient, headers: dict[str, str], classifier: FakeClassifier
+) -> dict:
+    """Un ticket respondido con una predefinida (age_limit: prioridad low)."""
+    classifier.answer(FAQ, "age_limit")
+    body = await create_ticket(client, headers, FAQ)
+    assert body["status"] == "answered"
+    return body
+
+
+async def events_of(db_session: AsyncSession, ticket_id: str) -> list[str]:
+    rows = await db_session.scalars(
+        select(TicketEvent.event)
+        .where(TicketEvent.ticket_id == uuid.UUID(ticket_id))
+        .order_by(TicketEvent.created_at, TicketEvent.id)
+    )
+    return list(rows)
+
+
+async def test_escalating_sends_the_ticket_to_a_person(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    classifier: FakeClassifier,
+    db_session: AsyncSession,
+) -> None:
+    body = await answered_ticket(client, auth_headers, classifier)
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/escalate", headers=auth_headers
+    )
+
+    assert response.status_code == 200
+    detail = response.json()
+    assert detail["status"] == "in_human_queue"
+    assert [(m["author"], m["content"]) for m in detail["messages"]] == [
+        ("customer", FAQ),
+        ("system", PROVISIONAL_ANSWER),
+        ("system", CALL_TEMPLATE),
+    ]
+    ticket = await db_session.get(Ticket, uuid.UUID(body["id"]))
+    assert ticket is not None and ticket.escalated_at is not None
+    assert (ticket.priority, ticket.priority_reason) == (
+        2,
+        "low by intent, raised to medium by escalation",
+    )
+    # El plazo cuenta desde que escala (medium: 4 h), no desde que escribió.
+    assert ticket.due_at == ticket.escalated_at + timedelta(hours=4)
+    # route no cambia: es lo que decidió el sistema (métricas, correcciones).
+    assert ticket.route == "ai"
+
+
+async def test_escalating_twice_does_nothing_the_second_time(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    classifier: FakeClassifier,
+    db_session: AsyncSession,
+) -> None:
+    body = await answered_ticket(client, auth_headers, classifier)
+    url = f"{TICKETS_URL}/{body['id']}/escalate"
+
+    first = await client.post(url, headers=auth_headers)
+    second = await client.post(url, headers=auth_headers)
+
+    assert (first.status_code, second.status_code) == (200, 200)
+    assert second.json()["messages"] == first.json()["messages"]
+    assert (await events_of(db_session, body["id"])).count("escalated") == 1
+
+
+async def resolve_directly(db_session: AsyncSession, ticket_id: str) -> None:
+    await db_session.execute(
+        update(Ticket)
+        .where(Ticket.id == uuid.UUID(ticket_id))
+        .values(status=TicketStatus.RESOLVED)
+    )
+
+
+@pytest.mark.parametrize("action", ["escalate", "messages"])
+async def test_a_resolved_ticket_cannot_be_reopened(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    db_session: AsyncSession,
+    action: str,
+) -> None:
+    body = await create_ticket(client, auth_headers)
+    await resolve_directly(db_session, body["id"])
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/{action}",
+        json={"text": "It still doesn't work"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 409
+    assert "abre uno nuevo" in response.json()["detail"]
+
+
+async def test_replying_to_an_answer_escalates_with_the_text(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    classifier: FakeClassifier,
+    db_session: AsyncSession,
+) -> None:
+    body = await answered_ticket(client, auth_headers, classifier)
+    reply = "That doesn't answer my question"
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/messages",
+        json={"text": f"  {reply} "},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    detail = response.json()
+    assert detail["status"] == "in_human_queue"
+    assert [(m["author"], m["content"]) for m in detail["messages"]][2:] == [
+        ("customer", reply),
+        ("system", CALL_TEMPLATE),
+    ]
+    assert "escalated" in await events_of(db_session, body["id"])
+
+
+async def test_replying_while_with_a_person_is_attached_for_the_agent(
+    client: AsyncClient, auth_headers: dict[str, str], db_session: AsyncSession
+) -> None:
+    body = await create_ticket(client, auth_headers)  # duda → persona
+    ticket = await db_session.get(Ticket, uuid.UUID(body["id"]))
+    assert ticket is not None
+    before = (ticket.priority, ticket.due_at)
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/messages",
+        json={"text": "Call me after 6 pm please"},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 201
+    detail = response.json()
+    assert detail["status"] == "in_human_queue"
+    assert detail["messages"][-1]["content"] == "Call me after 6 pm please"
+    assert (await events_of(db_session, body["id"]))[-1] == "customer_replied"
+    # Ni prioridad ni plazo cambian: no es un ticket nuevo.
+    await db_session.refresh(ticket)
+    assert (ticket.priority, ticket.due_at) == before
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["", "   ", "x" * (TICKET_TEXT_MAX_LENGTH + 1)],
+    ids=["vacío", "solo espacios", "demasiado largo"],
+)
+async def test_reply_with_invalid_text_returns_422(
+    client: AsyncClient, auth_headers: dict[str, str], text: str
+) -> None:
+    body = await create_ticket(client, auth_headers)
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/messages",
+        json={"text": text},
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("action", ["escalate", "messages"])
+async def test_cannot_write_on_someone_elses_ticket(
+    client: AsyncClient,
+    auth_headers: dict[str, str],
+    other_auth_headers: dict[str, str],
+    action: str,
+) -> None:
+    body = await create_ticket(client, auth_headers)
+
+    response = await client.post(
+        f"{TICKETS_URL}/{body['id']}/{action}",
+        json={"text": "hello"},
+        headers=other_auth_headers,
+    )
+
+    assert response.status_code == 404

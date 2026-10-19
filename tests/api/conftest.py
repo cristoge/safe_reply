@@ -41,17 +41,32 @@ async def other_auth_headers(client: AsyncClient) -> dict[str, str]:
     return await login_headers(client, "otra@test.com")
 
 
-@pytest.fixture
-async def agent_headers(
-    client: AsyncClient, db_session: AsyncSession
+async def agent_login_headers(
+    client: AsyncClient, db_session: AsyncSession, email: str
 ) -> dict[str, str]:
-    """Un agente logueado. Se crea directamente en la BD: por la API no se puede."""
+    """Crea un agente directamente en la BD (por la API no se puede) y hace login."""
     db_session.add(
         User(
-            email="agente@test.com",
+            email=email,
             hashed_password=await hash_password(PASSWORD),
             role=UserRole.AGENT,
         )
     )
     await db_session.flush()
-    return await login(client, "agente@test.com")
+    return await login(client, email)
+
+
+@pytest.fixture
+async def agent_headers(
+    client: AsyncClient, db_session: AsyncSession
+) -> dict[str, str]:
+    """Un agente logueado."""
+    return await agent_login_headers(client, db_session, "agente@test.com")
+
+
+@pytest.fixture
+async def other_agent_headers(
+    client: AsyncClient, db_session: AsyncSession
+) -> dict[str, str]:
+    """Un segundo agente, para comprobar que no actúa sobre los tickets del primero."""
+    return await agent_login_headers(client, db_session, "luis@test.com")

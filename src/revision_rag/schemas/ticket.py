@@ -13,16 +13,25 @@ from pydantic import BaseModel, ConfigDict, StringConstraints
 from revision_rag.models.enums import MessageAuthor, TicketStatus
 from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
 
+# strip_whitespace antes de medir: "   " cuenta como vacío. El mismo límite que
+# los CHECK de tickets.text y de lo que escribe el cliente en ticket_messages,
+# para que reciba un 422 claro y no un 500.
+CustomerText = Annotated[
+    str,
+    StringConstraints(
+        strip_whitespace=True, min_length=1, max_length=TICKET_TEXT_MAX_LENGTH
+    ),
+]
+
 
 class TicketCreate(BaseModel):
-    # strip_whitespace antes de medir: "   " cuenta como vacío. El mismo límite
-    # que el CHECK de la tabla, para que el cliente reciba un 422 claro y no un 500.
-    text: Annotated[
-        str,
-        StringConstraints(
-            strip_whitespace=True, min_length=1, max_length=TICKET_TEXT_MAX_LENGTH
-        ),
-    ]
+    text: CustomerText
+
+
+class MessageCreate(BaseModel):
+    """El cliente contesta en un ticket ya respondido o que está con una persona."""
+
+    text: CustomerText
 
 
 class _TicketBase(BaseModel):

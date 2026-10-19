@@ -3,7 +3,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from revision_rag.triage.rules import Rules
-from revision_rag.triage.urgency import due_at, final_priority
+from revision_rag.triage.urgency import due_at, escalated_priority, final_priority
 
 
 @pytest.mark.parametrize(
@@ -69,3 +69,30 @@ def test_due_at_depends_on_the_final_priority(
     created = datetime(2026, 10, 19, 10, 0, tzinfo=UTC)
 
     assert due_at(created, level, rules) == created + timedelta(hours=hours)
+
+
+@pytest.mark.parametrize(
+    ("level", "reason", "expected"),
+    [
+        (1, "low by intent", (2, "low by intent, raised to medium by escalation")),
+        (
+            2,
+            "low by intent, raised to medium by urgency (urgent wording)",
+            (
+                3,
+                (
+                    "low by intent, raised to medium by urgency (urgent wording),"
+                    " raised to high by escalation"
+                ),
+            ),
+        ),
+        (3, "high by intent", (3, "high by intent (escalated)")),
+    ],
+    ids=["low", "medium", "high se queda"],
+)
+def test_escalating_raises_one_level_and_keeps_the_reason(
+    level: int, reason: str, expected: tuple[int, str]
+) -> None:
+    priority = escalated_priority(level, reason)
+
+    assert (priority.level, priority.reason) == expected

@@ -7,7 +7,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from revision_rag.api.routes import auth, tickets, users
+from revision_rag.api.routes import agent, auth, tickets, users
 from revision_rag.clients.classifier import ClassifierLoadError, JoblibClassifier
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import AppError
@@ -80,6 +80,7 @@ def include_routers(app: FastAPI, settings: Settings) -> None:
     app.include_router(auth.router, prefix="/api/v1")
     app.include_router(users.router, prefix="/api/v1")
     app.include_router(tickets.router, prefix="/api/v1")
+    app.include_router(agent.router, prefix="/api/v1")
     # Rutas solo para desarrollo: en producción no existen (404 y fuera de /docs).
     if settings.environment == "development":
         app.include_router(users.dev_router, prefix="/api/v1")

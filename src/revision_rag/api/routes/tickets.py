@@ -16,9 +16,15 @@ from revision_rag.core.exceptions import (
     PhoneRequiredError,
     RateLimitExceededError,
     TicketNotFoundError,
+    TicketStateConflictError,
 )
 from revision_rag.models import Ticket
-from revision_rag.schemas.ticket import TicketCreate, TicketDetail, TicketSummary
+from revision_rag.schemas.ticket import (
+    MessageCreate,
+    TicketCreate,
+    TicketDetail,
+    TicketSummary,
+)
 
 router = APIRouter(
     prefix="/tickets",
@@ -31,6 +37,12 @@ router = APIRouter(
 
 NOT_FOUND: dict[int | str, dict[str, Any]] = {
     TicketNotFoundError.status_code: {"description": TicketNotFoundError.detail}
+}
+NOT_FOUND_OR_CONFLICT: dict[int | str, dict[str, Any]] = {
+    **NOT_FOUND,
+    TicketStateConflictError.status_code: {
+        "description": "Resuelto (abre uno nuevo) o aún procesándose"
+    },
 }
 
 
@@ -88,4 +100,26 @@ async def list_tickets(
 
 @router.get("/{ticket_id}", responses=NOT_FOUND)
 async def read_ticket(ticket: OwnedTicket, service: TicketServiceDep) -> TicketDetail:
+    return await service.detail(ticket)
+
+
+@router.post("/{ticket_id}/escalate", responses=NOT_FOUND_OR_CONFLICT)
+async def escalate_ticket(
+    ticket: OwnedTicket, service: TicketServiceDep
+) -> TicketDetail:
+    """ "I still need help": el ticket pasa a una persona, que llamará al cliente."""
+    ticket = await service.escalate(ticket)
+    return await service.detail(ticket)
+
+
+@router.post(
+    "/{ticket_id}/messages",
+    status_code=status.HTTP_201_CREATED,
+    responses=NOT_FOUND_OR_CONFLICT,
+)
+async def reply_to_ticket(
+    data: MessageCreate, ticket: OwnedTicket, service: TicketServiceDep
+) -> TicketDetail:
+    """El cliente contesta. Tras una respuesta, es escalar con su texto."""
+    ticket = await service.reply(ticket, data)
     return await service.detail(ticket)

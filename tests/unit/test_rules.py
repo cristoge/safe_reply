@@ -19,6 +19,7 @@ VALID: dict[str, Any] = {
         "repeat_tickets": 3,
         "repeat_window_hours": 24,
     },
+    "human_queue": {"claim_timeout_hours": 2, "max_failed_calls": 3},
     "intents": {
         "age_limit": {
             "ticket_type": "account_and_personal_details",
@@ -80,6 +81,8 @@ def broken(path: str, value: Any) -> dict[str, Any]:
         (broken("intents", {}), "intents"),
         (broken("urgency.patterns", ["[a-"]), "urgency.patterns"),
         (broken("urgency.repeat_tickets", 1), "repeat_tickets"),
+        (broken("human_queue", ...), "human_queue"),
+        (broken("human_queue.max_failed_calls", 0), "max_failed_calls"),
     ],
     ids=[
         "IA sin answer_mode",
@@ -96,6 +99,8 @@ def broken(path: str, value: Any) -> dict[str, Any]:
         "sin intenciones",
         "urgencia: regex inválida",
         "urgencia: repetir desde 1",
+        "sin cola humana",
+        "cola: 0 llamadas",
     ],
 )
 def test_invalid_rules_do_not_load(

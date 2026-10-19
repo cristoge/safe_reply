@@ -20,11 +20,13 @@ from revision_rag.models import Ticket, User
 from revision_rag.models.enums import UserRole
 from revision_rag.repositories.refresh_token import RefreshTokenRepository
 from revision_rag.repositories.ticket import TicketRepository
+from revision_rag.repositories.ticket_correction import TicketCorrectionRepository
 from revision_rag.repositories.ticket_event import TicketEventRepository
 from revision_rag.repositories.ticket_message import TicketMessageRepository
 from revision_rag.repositories.user import UserRepository
 from revision_rag.schemas.pagination import PaginationParams
 from revision_rag.services.auth import AuthService
+from revision_rag.services.human_queue import HumanQueueService
 from revision_rag.services.rate_limiter import RateLimiter
 from revision_rag.services.ticket import TicketService
 from revision_rag.services.ticket_processor import TicketProcessor
@@ -162,6 +164,7 @@ def get_ticket_service(
     db: DbSession,
     rate_limiter: Annotated[RateLimiter, Depends(get_ticket_rate_limiter)],
     queue: Annotated[TaskQueue, Depends(get_task_queue)],
+    rules: Annotated[Rules, Depends(get_rules)],
 ) -> TicketService:
     return TicketService(
         db,
@@ -170,6 +173,7 @@ def get_ticket_service(
         TicketEventRepository(db),
         rate_limiter,
         queue,
+        rules,
     )
 
 
@@ -181,10 +185,27 @@ async def get_owned_ticket(
 ) -> Ticket:
     """El ticket del {ticket_id} de la URL, solo si es del cliente (si no, 404).
 
-    La reutilizarán todas las rutas del cliente que cuelgan de un ticket
-    (mensajes, escalar en el S5): la comprobación del dueño está en un único sitio.
+    La usan todas las rutas del cliente que cuelgan de un ticket (detalle,
+    mensajes, escalar): la comprobación del dueño está en un único sitio.
     """
     return await service.get(customer, ticket_id)
 
 
 OwnedTicket = Annotated[Ticket, Depends(get_owned_ticket)]
+
+
+def get_human_queue_service(
+    db: DbSession, rules: Annotated[Rules, Depends(get_rules)]
+) -> HumanQueueService:
+    return HumanQueueService(
+        db,
+        TicketRepository(db),
+        TicketMessageRepository(db),
+        TicketEventRepository(db),
+        TicketCorrectionRepository(db),
+        UserRepository(db),
+        rules,
+    )
+
+
+HumanQueueServiceDep = Annotated[HumanQueueService, Depends(get_human_queue_service)]

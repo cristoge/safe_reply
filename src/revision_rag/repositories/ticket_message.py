@@ -34,3 +34,12 @@ class TicketMessageRepository:
             .order_by(TicketMessage.created_at, TicketMessage.id)
         )
         return (await self.session.scalars(stmt)).all()
+
+    async def list_all(self, ticket_id: uuid.UUID) -> Sequence[TicketMessage]:
+        """Todos los mensajes, borradores incluidos: lo que ve el agente."""
+        stmt = (
+            select(TicketMessage)
+            .where(TicketMessage.ticket_id == ticket_id)
+            .order_by(TicketMessage.created_at, TicketMessage.id)
+        )
+        return (await self.session.scalars(stmt)).all()
