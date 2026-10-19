@@ -1,4 +1,5 @@
 import logging
+import time
 import uuid
 from datetime import timedelta
 
@@ -15,16 +16,14 @@ from revision_rag.models.enums import (
 from revision_rag.repositories.ticket import TicketRepository
 from revision_rag.repositories.ticket_event import TicketEventRepository
 from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.triage import router
 from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
-from revision_rag.triage.router import Destination, decide_route, summarize
+from revision_rag.triage.pipeline import triage_ticket
 from revision_rag.triage.rules import PRIORITY_LEVELS, Rules
-from revision_rag.triage.urgency import due_at, final_priority
+from revision_rag.triage.urgency import due_at
 
 logger = logging.getLogger(__name__)
 
-# route_reason de los caminos que no salen del router.
-CANNED_RAG_DISABLED = "canned answer (RAG not enabled yet)"
+# route_reason del camino de error (el resto los da triage_ticket).
 PROCESSING_ERROR = "processing error"
 # Si el procesado falla no se sabe qué es: podría ser un fraude. Mejor un
 # "hello" con prioridad alta que un fraude esperando 4 h (apartado 3.5).
@@ -32,7 +31,7 @@ PROCESSING_ERROR_PRIORITY = PRIORITY_LEVELS["high"]
 
 
 class TicketProcessor:
-    """Clasificar → reglas → urgencia → router → respuesta, para un ticket ya guardado.
+    """Clasificar → triage_ticket → guardar, para un ticket ya guardado.
 
     La misma lógica en la v1 (InlineTaskQueue, en la propia petición) y en la v2
     (un worker de ARQ): solo cambia quién llama a process_ticket.
@@ -73,50 +72,50 @@ class TicketProcessor:
         except Exception:
             # Cualquier fallo (el modelo, un bug) → persona. El estado nunca se
             # queda atascado y el cliente recibe igualmente la plantilla.
-            logger.exception("Error procesando el ticket %s", ticket_id)
+            logger.exception("ticket_processing_failed", extra={"ticket_id": ticket_id})
             await self.session.rollback()
             await self._send_to_human_after_error(ticket_id)
 
     async def _decide_and_answer(self, ticket: Ticket) -> None:
-        prediction = summarize(self.classifier.predict(ticket.text), self.rules)
-        decision = decide_route(prediction, ticket.text, self.rules)
-        rule = self.rules.intents[prediction.intent]
-
+        start = time.perf_counter()
         window = timedelta(hours=self.rules.urgency.repeat_window_hours)
         recent = await self.tickets.count_recent_for_customer(
             ticket.customer_id, since=ticket.created_at - window
         )
-        priority = final_priority(rule.priority, ticket.text, recent, self.rules)
+        result = triage_ticket(
+            ticket.text,
+            self.classifier.predict(ticket.text),
+            recent,
+            self.rules,
+            self.answers,
+        )
 
-        ticket.intent = prediction.intent
-        ticket.confidence = prediction.confidence
-        ticket.ticket_type = rule.ticket_type
-        ticket.priority = priority.level
-        ticket.priority_reason = priority.reason
+        ticket.intent = result.intent
+        ticket.confidence = result.confidence
+        ticket.ticket_type = result.ticket_type
+        ticket.priority = result.priority.level
+        ticket.priority_reason = result.priority.reason
         ticket.classifier_version = self.classifier.version
-
-        match decision.destination:
-            case Destination.HUMAN:
-                reason = decision.reason
-                assert reason is not None  # todas las reglas de persona dan motivo
-                if reason in (router.ALWAYS_HUMAN, router.ALWAYS_HUMAN_LOW_CONFIDENCE):
-                    # El agente ve también por qué esa intención va siempre a
-                    # persona ("possible fraud").
-                    reason = f"{reason}: {rule.reason}"
-                self._to_human(ticket, reason)
-                content = CALL_TEMPLATE
-            case Destination.CANNED:
-                self._to_ai(ticket, router.CANNED_FAQ)
-                content = self.answers.for_intent(prediction.intent)
-            case Destination.RAG:
-                if self.rules.rag_enabled:
-                    raise NotImplementedError("el RAG llega en la v2")
-                # Mientras no haya RAG, las intenciones de problemas responden
-                # con su predefinida (genérica a propósito, S6).
-                self._to_ai(ticket, CANNED_RAG_DISABLED)
-                content = self.answers.for_intent(prediction.intent)
-
-        await self._finish(ticket, content)
+        if result.route == Route.HUMAN:
+            self._to_human(ticket, result.route_reason)
+        else:
+            self._to_ai(ticket, result.route_reason)
+        await self._finish(ticket, result.answer)
+        # Después del commit: solo se registra lo que de verdad se guardó.
+        logger.info(
+            "ticket_triaged",
+            extra={
+                "ticket_id": ticket.id,
+                "intent": result.intent,
+                "confidence": round(result.confidence, 3),
+                "ticket_type": result.ticket_type,
+                "priority": result.priority.level,
+                "route": result.route,
+                "route_reason": result.route_reason,
+                "classifier_version": self.classifier.version,
+                "duration_ms": round((time.perf_counter() - start) * 1000, 1),
+            },
+        )
 
     async def _send_to_human_after_error(self, ticket_id: uuid.UUID) -> None:
         # Recargado: el rollback ha descartado lo que se hubiera cambiado a mitad.

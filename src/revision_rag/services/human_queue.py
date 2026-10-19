@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
@@ -35,6 +36,8 @@ from revision_rag.schemas.agent import (
 )
 from revision_rag.triage.answers import unreachable_message
 from revision_rag.triage.rules import Rules
+
+logger = logging.getLogger(__name__)
 
 # reason del unassigned tras las llamadas fallidas del YAML. Fijo (sin el número
 # de llamadas): es lo que busca count_failed_calls para empezar la cuenta de cero.
@@ -87,8 +90,10 @@ class HumanQueueService:
             stale_before=now - timedelta(hours=timeout)
         )
         if ticket is None:
+            logger.info("queue_empty", extra={"agent_id": agent.id})
             return None
-        if ticket.assigned_agent_id is not None:
+        reclaimed = ticket.assigned_agent_id is not None
+        if reclaimed:
             # Lo reclamó otro hace más del plazo y no llegó a contactar: el
             # historial dice por qué cambió de manos.
             await self._event(
@@ -100,6 +105,20 @@ class HumanQueueService:
         ticket.assigned_at = now
         await self._event(ticket, TicketEventType.ASSIGNED, actor=agent)
         await self.session.commit()
+        assert ticket.due_at is not None  # todo ticket en la cola tiene plazo
+        logger.info(
+            "ticket_claimed",
+            extra={
+                "ticket_id": ticket.id,
+                "agent_id": agent.id,
+                "reclaimed": reclaimed,
+                "priority": ticket.priority,
+                # Lo que esperó el cliente y si se pasó del plazo: las dos
+                # cifras que dicen si el equipo da abasto.
+                "waited_s": round((now - ticket.created_at).total_seconds()),
+                "overdue": now > ticket.due_at,
+            },
+        )
         return ticket
 
     async def get(self, ticket_id: uuid.UUID) -> Ticket:
@@ -134,6 +153,9 @@ class HumanQueueService:
             case _:
                 raise TicketStateConflictError("El ticket ya está resuelto")
         await self.session.commit()
+        logger.info(
+            "ticket_contacted", extra={"ticket_id": ticket.id, "agent_id": agent.id}
+        )
         return ticket
 
     async def record_failed_call(self, agent: User, ticket_id: uuid.UUID) -> Ticket:
@@ -169,6 +191,15 @@ class HumanQueueService:
                 ticket, TicketEventType.UNASSIGNED, reason=CUSTOMER_UNREACHABLE
             )
         await self.session.commit()
+        logger.info(
+            "call_failed",
+            extra={
+                "ticket_id": ticket.id,
+                "agent_id": agent.id,
+                "failed_calls": failed,
+                "unreachable": failed >= max_calls,
+            },
+        )
         return ticket
 
     async def resolve(
@@ -185,10 +216,20 @@ class HumanQueueService:
             case TicketStatus.IN_HUMAN_QUEUE if reason is None:
                 raise ResolutionReasonRequiredError
             case _:
+                contacted = ticket.status == TicketStatus.CONTACTED
                 await self._change_status(
                     ticket, TicketStatus.RESOLVED, agent, reason=reason
                 )
         await self.session.commit()
+        # Sin el motivo: lo escribe el agente a mano (puede llevar datos del cliente).
+        logger.info(
+            "ticket_resolved",
+            extra={
+                "ticket_id": ticket.id,
+                "agent_id": agent.id,
+                "contacted": contacted,
+            },
+        )
         return ticket
 
     async def correct(
@@ -220,6 +261,19 @@ class HumanQueueService:
             )
         )
         await self.session.commit()
+        # Sin la nota (texto libre). Qué se corrigió, para ver qué falla más.
+        logger.info(
+            "ticket_corrected",
+            extra={
+                "ticket_id": ticket.id,
+                "agent_id": agent.id,
+                "fields": sorted(
+                    f
+                    for f in ("intent", "priority", "route")
+                    if getattr(data, f"corrected_{f}") is not None
+                ),
+            },
+        )
         return correction
 
     async def _lock_assigned(self, agent: User, ticket_id: uuid.UUID) -> Ticket:

@@ -21,6 +21,7 @@ mise run docker:up        # Postgres (pgvector) + Redis, espera a que estén hea
 mise run fastapi          # docker:up + uvicorn --reload → http://127.0.0.1:8000/docs (necesita models/: mise run ml:train)
 mise run docker:down
 mise run agent:create -- agente@banco.com --name Ana   # los agentes solo se crean así (pide la contraseña)
+mise run alerts           # cola, atascos, % a persona y escalados por intención (sale con 1 si salta alguna)
 
 uv run pytest                                          # toda la batería
 uv run pytest tests/unit/test_intent_rules.py          # un archivo
@@ -34,6 +35,7 @@ uv run alembic upgrade head / downgrade -1
 
 mise run ml:data                       # descarga Banking77 en ml/data/banking77/ (checksums en ml/banking77.sha256)
 mise run ml:train                      # entrena y guarda models/intent_classifier.joblib + .json (fuera de Git)
+mise run ml:evaluate                   # la v1 tal como arranca → ml/results/evaluation.json (en Git)
 uv run python ml/compare_models.py     # evaluación del router sobre el test de Banking77
 uv run python ml/robustness.py         # fuera de ámbito, intenciones escondidas, dos problemas, largos
 uv run python ml/try_router.py "my card was stolen"   # un ticket a mano: cada paso y su motivo
@@ -54,10 +56,16 @@ Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `
 - **Auth:** JWT de acceso de corta duración + refresh tokens opacos guardados como SHA-256 y **rotados** en cada uso (`FOR UPDATE`). Login con hash ficticio cuando el email no existe (contra timing attacks). argon2 en otro hilo (`asyncio.to_thread`).
 - **Redis** (`db/cache.py`): un cliente compartido en `app.state`. Solo para lo que no necesita escribir en Postgres: el rate limiting (`services/rate_limiter.py`, ventana fija con `INCR` + `EXPIRE NX`) y, en la v2, la cola (ARQ). Nunca caché de respuestas. La `Idempotency-Key` de `POST /tickets` vive en Postgres (`tickets.idempotency_key` + índice único parcial), en la misma transacción que el ticket: Postgres es la fuente de verdad.
 
+### Logs y alertas (S7)
+- `core/logging.py`: el logger `revision_rag` escribe **una línea JSON por evento** por stdout (`configure_logging` en el `lifespan`, nivel `LOG_LEVEL`). El mensaje es el nombre del evento y los datos van en `extra={...}`: `ticket_created`, `ticket_triaged` (intención, confianza, ruta, motivo, prioridad, `duration_ms`), `ticket_processing_failed`, `ticket_escalated`, `customer_replied`, `queue_empty`, `ticket_claimed` (`waited_s`, `overdue`), `ticket_contacted`, `call_failed`, `ticket_resolved`, `ticket_corrected`.
+- Se registran **después del commit** (solo lo que de verdad se guardó). **Nunca** el texto del cliente, teléfono, email ni los textos libres de los agentes (motivo de resolver, nota de la corrección): solo ids y campos cerrados. Lo vigila `tests/api/test_logs.py`.
+- **Alertas** (`mise run alerts` → `scripts/alerts.py` → `services/alerts.py` + `repositories/ticket_stats.py`, solo lectura): % a persona en la ventana, cola (esperando, sin asignar, plazo vencido, el más viejo), atascados en `received`/`processing` y % de escalados por intención (`route` no cambia al escalar, así que `route='ai'` + `escalated_at` = respuesta que no sirvió). Umbrales en el YAML (`alerts`, con `min_tickets` para que un porcentaje con pocos tickets no salte). Solo avisa: los cambios los decide una persona.
+- `migrations/env.py` llama a `fileConfig(..., disable_existing_loggers=False)`: si no, aplicar las migraciones en el mismo proceso (los tests lo hacen) silencia los loggers de la app.
+
 ### Procesado de tickets (S4)
 - `TicketService.create` guarda el ticket + evento `created` (commit) y **después** llama a `TaskQueue.enqueue_ticket`. v1: `InlineTaskQueue` (`tasks/queue.py`) ejecuta `TicketProcessor.process_ticket` en la misma petición; v2: `ArqTaskQueue` sin tocar el procesado.
 - `services/ticket_processor.py`: transición condicional `received → processing` (`UPDATE … WHERE status='received' RETURNING`; si ya no está en `received`, no hace nada) y commit; luego `triage/` decide y se guarda todo (campos del ticket, mensaje `system`, evento) en otro commit. **Si algo falla → rollback y a persona** (`route_reason="processing error"`, prioridad high, plantilla): ningún ticket se queda atascado.
-- `triage/` son funciones puras: `rules.py` (YAML validado con Pydantic: un YAML mal formado no carga), `router.py`, `urgency.py` (prioridad final, `priority_reason`, `due_at` solo para la cola humana, desde `created_at`), `answers.py` (`CALL_TEMPLATE` y `CannedAnswers` de `policies/canned/<intent>.md`, sin texto de reserva: si faltara una, `KeyError` → persona). Con `rag_enabled: false` (YAML), lo que el router manda al RAG responde con su predefinida.
+- `triage/` son funciones puras. `pipeline.py` (`triage_ticket`: reglas → urgencia → router → respuesta) es la decisión entera, sin BD ni modelo: la usan el procesado y `ml/evaluate.py`. Las piezas: `rules.py` (YAML validado con Pydantic: un YAML mal formado no carga), `router.py`, `urgency.py` (prioridad final, `priority_reason`, `due_at` solo para la cola humana, desde `created_at`; si el modelo duda, como mínimo `low_confidence_min_priority` del YAML: la prioridad de una intención adivinada no es fiable, y solo sube, nunca baja), `answers.py` (`CALL_TEMPLATE` y `CannedAnswers` de `policies/canned/<intent>.md`, sin texto de reserva: si faltara una, `KeyError` → persona). Con `rag_enabled: false` (YAML), lo que el router manda al RAG responde con su predefinida.
 - Reglas, modelo y respuestas viven en `app.state` (cargados en el `lifespan`) y se inyectan con `get_rules` / `get_classifier` / `get_canned_answers`.
 
 ### Respuestas predefinidas (S6)
@@ -95,7 +103,8 @@ Capas, cada una solo habla con la de abajo: `api/routes` → `api/deps.py` → `
 - `rules/intents.yaml` es la **única fuente de las reglas de negocio**: las 77 intenciones de Banking77 (tipo, prioridad, `route` ai/human, `answer_mode` canned/rag, `min_confidence`, `reason`), los umbrales del router, los plazos por prioridad y `sensitive_patterns` (red de seguridad: palabras de fraude → persona). Lo carga y valida con Pydantic `triage/rules.py` (`load_rules`): un YAML mal formado no carga. `tests/unit/test_intent_rules.py` vigila las decisiones de negocio (fraude siempre a persona...); cualquier cambio del YAML debe mantenerlo en verde.
 - **Un solo router:** `src/revision_rag/triage/router.py` (`summarize` + `decide_route`, reglas en orden 0 palabra sensible → 1 siempre persona → 2 confianza → 3 P(persona) → 4 predefinida → 5 RAG, cada una con su `route_reason`). Lo usa el backend y también `ml/`: `ml/common.py` (carga de datos, modelo definitivo TF-IDF + regresión logística) no tiene reglas propias; su `decide_routes` solo pasa cada ticket por `decide_route` con los umbrales que se quieran comparar. Así lo que se mide es lo que se ejecuta.
 - Los scripts de `ml/` importan con `from common import ...`: ejecutarlos como `uv run python ml/<script>.py` desde la raíz (no como módulos).
-- Las decisiones del router se toman **midiendo** con `compare_models.py`/`robustness.py`; los resultados y lo descartado están en el apartado 3.5 del diseño.
+- Las decisiones del router se toman **midiendo** con `compare_models.py`/`robustness.py` (exploran: reentrenan y barren umbrales); los resultados y lo descartado están en el apartado 3.5 del diseño.
+- `ml/evaluate.py` (S7) mide lo que de verdad arranca: `load_triage` (YAML + `models/` + predefinidas) y `triage_ticket` para cada ticket. Escribe `ml/results/evaluation.json` sin fecha ni commit (solo versión del modelo y hashes de las entradas): mismas entradas → mismo archivo. Sus cuentas se prueban en `tests/unit/test_evaluate.py` (`ml/` está en `pythonpath`).
 
 ## Convenciones
 

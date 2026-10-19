@@ -25,30 +25,40 @@ class Priority:
 
 
 def final_priority(
-    base: PriorityName, text: str, recent_tickets: int, rules: Rules
+    base: PriorityName,
+    text: str,
+    recent_tickets: int,
+    rules: Rules,
+    *,
+    low_confidence: bool = False,
 ) -> Priority:
-    """La prioridad base, subida un nivel si hay alguna señal de urgencia.
+    """La prioridad base, con el mínimo si el modelo dudaba y +1 si hay urgencia.
 
     recent_tickets: los tickets del cliente en la ventana del YAML, contando este.
     Varias señales no suben más de un nivel: la prioridad ordena, no castiga.
     """
+    level = PRIORITY_LEVELS[base]
+    reason = f"{base} by intent"
+    floor = PRIORITY_LEVELS[rules.low_confidence_min_priority]
+    if low_confidence and level < floor:
+        # La base sale de una intención adivinada con poca confianza.
+        level = floor
+        reason += f", raised to {PRIORITY_NAMES[floor]} (low confidence)"
+
     urgency = rules.urgency
     signals = []
     if urgency.pattern.search(text):
         signals.append("urgent wording")
     if recent_tickets >= urgency.repeat_tickets:
         signals.append(f"{recent_tickets} tickets in {urgency.repeat_window_hours} h")
-
-    level = PRIORITY_LEVELS[base]
     if not signals:
-        return Priority(level, f"{base} by intent")
+        return Priority(level, reason)
     why = ", ".join(signals)
     if level == HIGHEST:
-        return Priority(level, f"{base} by intent ({why})")
+        return Priority(level, f"{reason} ({why})")
     raised = level + 1
     return Priority(
-        raised,
-        f"{base} by intent, raised to {PRIORITY_NAMES[raised]} by urgency ({why})",
+        raised, f"{reason}, raised to {PRIORITY_NAMES[raised]} by urgency ({why})"
     )
 
 

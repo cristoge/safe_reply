@@ -96,3 +96,32 @@ def test_escalating_raises_one_level_and_keeps_the_reason(
     priority = escalated_priority(level, reason)
 
     assert (priority.level, priority.reason) == expected
+
+
+def test_low_confidence_raises_the_guessed_priority_to_the_minimum(
+    rules: Rules,
+) -> None:
+    # "hello" → una FAQ cualquiera (low) con poca confianza: no es fiable.
+    priority = final_priority("low", "hello", 1, rules, low_confidence=True)
+
+    assert (priority.level, priority.reason) == (
+        2,
+        "low by intent, raised to medium (low confidence)",
+    )
+
+
+def test_low_confidence_never_lowers_the_priority(rules: Rules) -> None:
+    # Un posible fraude adivinado con poca confianza no espera más por dudar.
+    priority = final_priority("high", "my card", 1, rules, low_confidence=True)
+
+    assert (priority.level, priority.reason) == (3, "high by intent")
+
+
+def test_low_confidence_and_urgency_add_up(rules: Rules) -> None:
+    priority = final_priority("low", "urgent", 1, rules, low_confidence=True)
+
+    assert priority.level == 3
+    assert priority.reason == (
+        "low by intent, raised to medium (low confidence),"
+        " raised to high by urgency (urgent wording)"
+    )

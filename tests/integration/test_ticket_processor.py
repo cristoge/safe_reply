@@ -18,12 +18,12 @@ from revision_rag.repositories.ticket import TicketRepository
 from revision_rag.repositories.ticket_event import TicketEventRepository
 from revision_rag.repositories.ticket_message import TicketMessageRepository
 from revision_rag.services.ticket_processor import (
-    CANNED_RAG_DISABLED,
     PROCESSING_ERROR,
     TicketProcessor,
 )
 from revision_rag.triage import router
 from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
+from revision_rag.triage.pipeline import CANNED_RAG_DISABLED
 from revision_rag.triage.rules import Rules
 
 
@@ -237,20 +237,41 @@ async def test_urgency_raises_the_priority_and_shortens_the_deadline(
 
 
 async def test_third_ticket_of_the_customer_is_raised(
-    processor: TicketProcessor, db_session: AsyncSession, customer: User
+    processor: TicketProcessor,
+    classifier: FakeClassifier,
+    db_session: AsyncSession,
+    customer: User,
 ) -> None:
     for text in ("first", "second"):
         await process(
             processor, db_session, await new_ticket(db_session, customer, text)
         )
+    # Con confianza: si dudara, el mínimo de low confidence también subiría.
+    classifier.answer("third", "card_arrival")
 
     third = await process(
         processor, db_session, await new_ticket(db_session, customer, "third")
     )
 
-    # card_arrival (la del clasificador falso) es low → medium.
+    # card_arrival es low → medium.
     assert third.priority == 2
     assert "3 tickets in 24 h" in (third.priority_reason or "")
+
+
+async def test_low_confidence_gets_at_least_the_minimum_priority(
+    processor: TicketProcessor, db_session: AsyncSession, customer: User
+) -> None:
+    # El clasificador falso duda (card_arrival, low, con 0.5): no es fiable.
+    ticket = await process(
+        processor, db_session, await new_ticket(db_session, customer, "hello")
+    )
+
+    assert ticket.route_reason == router.LOW_CONFIDENCE
+    assert (ticket.priority, ticket.priority_reason) == (
+        2,
+        "low by intent, raised to medium (low confidence)",
+    )
+    assert ticket.due_at == ticket.created_at + timedelta(hours=4)
 
 
 # --- Fallos y repeticiones --------------------------------------------------------

@@ -101,12 +101,23 @@ class HumanQueueConfig(_Frozen):
     max_failed_calls: int = Field(gt=0)
 
 
+class AlertsConfig(_Frozen):
+    window_hours: int = Field(gt=0)
+    max_human_share: float = Field(gt=0, le=1)
+    escalation_window_days: int = Field(gt=0)
+    max_escalation_rate: float = Field(gt=0, le=1)
+    min_tickets: int = Field(gt=0)
+    stuck_minutes: int = Field(gt=0)
+
+
 class Rules(_Frozen):
     router: RouterConfig
     sensitive_patterns: list[str] = Field(min_length=1)
+    low_confidence_min_priority: PriorityName
     due_hours: DueHours
     urgency: UrgencyConfig
     human_queue: HumanQueueConfig
+    alerts: AlertsConfig
     rag_enabled: bool = False
     intents: dict[str, IntentRule] = Field(min_length=1)
 

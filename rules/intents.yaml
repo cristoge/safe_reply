@@ -39,6 +39,14 @@ sensitive_patterns:
   - '\bsomeone (?:else )?(?:used|took|made|withdrew|has used|is using|stole)\b'
   - "\\b(?:transfer|money|payment)\\b.{0,40}\\b(?:never arrived|hasn'?t arrived|has not arrived|not arrived|didn'?t arrive|not received|never received|hasn'?t received)\\b"
 
+# Si el modelo duda (confianza por debajo del umbral), la prioridad de la intención
+# que adivina no es fiable: "hello" → transaction_charged_twice (high) con 0.04, o
+# un problema serio adivinado como una FAQ (low, 24 h). Como mínimo, esta.
+# Solo sube, nunca baja: bajar un posible fraude adivinado con poca confianza le
+# haría esperar más. Medido con ml/evaluate.py (S7): tickets de la cola con menos
+# prioridad que la de su intención real.
+low_confidence_min_priority: medium
+
 # Plazo para atender un ticket que va a persona (tickets.due_at), en horas
 due_hours:
   high: 1
@@ -67,6 +75,24 @@ human_queue:
   # Llamadas fallidas seguidas → mensaje al cliente ("we tried to call you…") y
   # el ticket vuelve a la cola sin asignar.
   max_failed_calls: 3
+
+# Consultas de alerta (S7, mise run alerts). Avisan; lo que se cambia después lo
+# decide una persona (en este YAML, con su motivo en Git).
+alerts:
+  # % de tickets a persona en la ventana. ml/evaluate.py da un 54.8 % con el test de
+  # Banking77: muy por encima, algo ha cambiado (el modelo, el tipo de tickets, spam).
+  window_hours: 24
+  max_human_share: 0.65
+  # Escalados ("I still need help") / respondidos por la IA, por intención (apartado
+  # 6 › Escalar): por encima, esa respuesta no sirve → subirle min_confidence o
+  # mandarla siempre a persona.
+  escalation_window_days: 7
+  max_escalation_rate: 0.15
+  # Con menos tickets, un porcentaje engaña (2 de 5 = 40 %).
+  min_tickets: 30
+  # En received/processing más de esto: el procesado se ha quedado a medias (en la
+  # v1 no debería pasar nunca; con ARQ, lo recogerá el barrido).
+  stuck_minutes: 5
 
 # El RAG llega en la v2. Mientras esté apagado, las intenciones con answer_mode
 # rag que el router manda al RAG responden con su predefinida (genérica a

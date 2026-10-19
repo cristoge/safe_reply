@@ -41,8 +41,9 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Para importar los dobles de prueba compartidos: from fakes import FakeClassifier.
-pythonpath = ["tests"]
+# Para importar los dobles de prueba compartidos (from fakes import FakeClassifier)
+# y los scripts de ml/, que se importan entre sí como módulos sueltos (from common import ...).
+pythonpath = ["tests", "ml"]
 # Los tests y fixtures async no necesitan @pytest.mark.asyncio.
 asyncio_mode = "auto"
 # Un solo event loop para toda la sesión de tests: el engine (y su pool de
@@ -57,5 +58,5 @@ asyncio_default_test_loop_scope = "session"
 venvPath = "."
 venv = ".venv"
 typeCheckingMode = "standard"
-# Lo mismo que pythonpath de pytest: tests/fakes.py se importa como "fakes".
-extraPaths = ["tests"]
+# Lo mismo que pythonpath de pytest: "fakes" (tests/) y "common" (ml/).
+extraPaths = ["tests", "ml"]

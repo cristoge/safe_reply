@@ -13,6 +13,7 @@ from revision_rag.triage.rules import load_rules
 VALID: dict[str, Any] = {
     "router": {"min_confidence": 0.8, "max_p_human": 0.1, "canned_min_confidence": 0.9},
     "sensitive_patterns": [r"\bstolen\b"],
+    "low_confidence_min_priority": "medium",
     "due_hours": {"high": 1, "medium": 4, "low": 24},
     "urgency": {
         "patterns": [r"\burgent\b"],
@@ -20,6 +21,14 @@ VALID: dict[str, Any] = {
         "repeat_window_hours": 24,
     },
     "human_queue": {"claim_timeout_hours": 2, "max_failed_calls": 3},
+    "alerts": {
+        "window_hours": 24,
+        "max_human_share": 0.65,
+        "escalation_window_days": 7,
+        "max_escalation_rate": 0.15,
+        "min_tickets": 30,
+        "stuck_minutes": 5,
+    },
     "intents": {
         "age_limit": {
             "ticket_type": "account_and_personal_details",
@@ -83,6 +92,8 @@ def broken(path: str, value: Any) -> dict[str, Any]:
         (broken("urgency.repeat_tickets", 1), "repeat_tickets"),
         (broken("human_queue", ...), "human_queue"),
         (broken("human_queue.max_failed_calls", 0), "max_failed_calls"),
+        (broken("low_confidence_min_priority", "urgent"), "low_confidence"),
+        (broken("alerts.max_human_share", 1.5), "max_human_share"),
     ],
     ids=[
         "IA sin answer_mode",
@@ -101,6 +112,8 @@ def broken(path: str, value: Any) -> dict[str, Any]:
         "urgencia: repetir desde 1",
         "sin cola humana",
         "cola: 0 llamadas",
+        "prioridad mínima desconocida",
+        "alerta: % > 1",
     ],
 )
 def test_invalid_rules_do_not_load(

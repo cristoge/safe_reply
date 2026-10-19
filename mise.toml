@@ -43,3 +43,11 @@ cd ml/data/banking77 && shasum -a 256 -c ../../banking77.sha256
 [tasks."ml:train"]
 description = "Entrena el clasificador y lo guarda en models/ (lo carga el backend al arrancar)"
 run = "uv run python ml/train.py"
+
+[tasks."ml:evaluate"]
+description = "Evalúa la v1 tal como arranca (YAML + models/ + predefinidas) y guarda ml/results/evaluation.json"
+run = "uv run python ml/evaluate.py"
+
+[tasks.alerts]
+description = "Consultas de alerta: cola, atascos, % a persona y escalados (sale con 1 si salta alguna)"
+run = "uv run python scripts/alerts.py"

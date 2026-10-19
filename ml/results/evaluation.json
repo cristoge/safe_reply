@@ -1,0 +1,146 @@
+{
+  "inputs": {
+    "classifier_version": "tfidf-lr-20261019-b06e26ac",
+    "test_sha256": "d12d6e3bc4c3103966ae786dc435913c0c563dfa328f5a3646d0e62cfeeb474d",
+    "rules_sha256": "574472a7f972e0f2441ebbb9016183cc3b1cfeb0a5a633df3d6e8c63be7e76fe",
+    "canned_answers_sha256": "534f1a37b015de9ebf98fe355b35ef438a8e9c30edb63f9b1369c73ab804562c",
+    "recent_tickets": 1
+  },
+  "router": {
+    "min_confidence": 0.8,
+    "max_p_human": 0.1,
+    "canned_min_confidence": 0.9
+  },
+  "classifier": {
+    "accuracy": 0.8974,
+    "f1_macro": 0.8977
+  },
+  "by_canned_min_confidence": {
+    "0.8": {
+      "banking77_test": {
+        "tickets": 3080,
+        "wrong_answers_sent": 0,
+        "calls": 0.5477,
+        "ai_answers": 0.4523,
+        "canned_faq": 0.2516,
+        "canned_rag_off": 0.2006,
+        "ai_wrong_intent": 19,
+        "ai_wrong_intent_other_type": 4,
+        "avoidable_calls": 0.288,
+        "queue_priority_ok": 0.719,
+        "queue_priority_too_low": 18,
+        "queue_priority_too_high": 456,
+        "human_reasons": {
+          "low confidence": 855,
+          "intent always human": 414,
+          "intent always human · low confidence": 270,
+          "sensitive keyword": 133,
+          "ambiguous with sensitive intent": 15
+        },
+        "wrong_answers_sent_examples": [],
+        "wrong_intent_other_type_pairs": {
+          "get_physical_card ← pin_blocked": 1,
+          "get_physical_card ← change_pin": 1,
+          "exchange_via_app ← receiving_money": 1,
+          "topping_up_by_card ← transfer_into_account": 1
+        }
+      },
+      "out_of_scope": {
+        "tickets": 40,
+        "answered_by_ai": 0,
+        "answered_by_ai_examples": []
+      },
+      "multi_problem": {
+        "tickets": 15,
+        "answered_by_ai": 0,
+        "answered_by_ai_examples": []
+      },
+      "long_messages": {
+        "tickets": 10,
+        "wrong_answers_sent": 0,
+        "calls": 1.0,
+        "ai_answers": 0.0,
+        "canned_faq": 0.0,
+        "canned_rag_off": 0.0,
+        "ai_wrong_intent": 0,
+        "ai_wrong_intent_other_type": 0,
+        "avoidable_calls": 0.6,
+        "queue_priority_ok": 0.7,
+        "queue_priority_too_low": 0,
+        "queue_priority_too_high": 3,
+        "human_reasons": {
+          "low confidence": 4,
+          "intent always human · low confidence": 4,
+          "intent always human": 1,
+          "sensitive keyword": 1
+        },
+        "wrong_answers_sent_examples": [],
+        "wrong_intent_other_type_pairs": {},
+        "intent_ok": 6
+      }
+    },
+    "0.9": {
+      "banking77_test": {
+        "tickets": 3080,
+        "wrong_answers_sent": 0,
+        "calls": 0.5477,
+        "ai_answers": 0.4523,
+        "canned_faq": 0.2049,
+        "canned_rag_off": 0.2474,
+        "ai_wrong_intent": 19,
+        "ai_wrong_intent_other_type": 4,
+        "avoidable_calls": 0.288,
+        "queue_priority_ok": 0.719,
+        "queue_priority_too_low": 18,
+        "queue_priority_too_high": 456,
+        "human_reasons": {
+          "low confidence": 855,
+          "intent always human": 414,
+          "intent always human · low confidence": 270,
+          "sensitive keyword": 133,
+          "ambiguous with sensitive intent": 15
+        },
+        "wrong_answers_sent_examples": [],
+        "wrong_intent_other_type_pairs": {
+          "get_physical_card ← pin_blocked": 1,
+          "get_physical_card ← change_pin": 1,
+          "exchange_via_app ← receiving_money": 1,
+          "topping_up_by_card ← transfer_into_account": 1
+        }
+      },
+      "out_of_scope": {
+        "tickets": 40,
+        "answered_by_ai": 0,
+        "answered_by_ai_examples": []
+      },
+      "multi_problem": {
+        "tickets": 15,
+        "answered_by_ai": 0,
+        "answered_by_ai_examples": []
+      },
+      "long_messages": {
+        "tickets": 10,
+        "wrong_answers_sent": 0,
+        "calls": 1.0,
+        "ai_answers": 0.0,
+        "canned_faq": 0.0,
+        "canned_rag_off": 0.0,
+        "ai_wrong_intent": 0,
+        "ai_wrong_intent_other_type": 0,
+        "avoidable_calls": 0.6,
+        "queue_priority_ok": 0.7,
+        "queue_priority_too_low": 0,
+        "queue_priority_too_high": 3,
+        "human_reasons": {
+          "low confidence": 4,
+          "intent always human · low confidence": 4,
+          "intent always human": 1,
+          "sensitive keyword": 1
+        },
+        "wrong_answers_sent_examples": [],
+        "wrong_intent_other_type_pairs": {},
+        "intent_ok": 6
+      }
+    }
+  }
+}

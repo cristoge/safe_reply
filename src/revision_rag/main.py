@@ -11,6 +11,7 @@ from revision_rag.api.routes import agent, auth, tickets, users
 from revision_rag.clients.classifier import ClassifierLoadError, JoblibClassifier
 from revision_rag.core.config import Settings, get_settings
 from revision_rag.core.exceptions import AppError
+from revision_rag.core.logging import configure_logging
 from revision_rag.db.cache import RedisClient, build_redis
 from revision_rag.db.session import DbSession, build_engine, build_sessionmaker
 from revision_rag.models.enums import Route
@@ -56,6 +57,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None]:
     # comprueban las conexiones. Si alguno no responde, la app no llega a
     # arrancar (fail fast).
     settings = get_settings()
+    configure_logging(settings.log_level)
     # Primero lo que no abre conexiones: si falta el modelo, no queda nada abierto.
     app.state.rules, app.state.classifier, app.state.canned_answers = load_triage(
         settings

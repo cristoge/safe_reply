@@ -16,8 +16,11 @@ config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
+# disable_existing_loggers=False: por defecto silencia todos los loggers que ya
+# existen, y cuando las migraciones se ejecutan dentro del mismo proceso (los
+# tests las aplican al empezar) los de la app dejarían de escribir sin avisar.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # La URL sale de Settings (.env), no de alembic.ini, que sí se sube a git.
 # El % se duplica porque alembic.ini usa interpolación de configparser.

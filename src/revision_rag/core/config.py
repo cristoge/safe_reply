@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     classifier_path: Path = Path("models/intent_classifier.joblib")
     canned_dir: Path = Path("policies/canned")
 
+    # Logs de la app en JSON por stdout (core/logging.py).
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+
 
 @lru_cache
 def get_settings() -> Settings:

@@ -18,6 +18,7 @@ RULES = Rules.model_validate(
             "canned_min_confidence": 0.9,
         },
         "sensitive_patterns": [r"\bstolen\b"],
+        "low_confidence_min_priority": "medium",
         "due_hours": {"high": 1, "medium": 4, "low": 24},
         "urgency": {
             "patterns": [r"\burgent\b"],
@@ -25,6 +26,14 @@ RULES = Rules.model_validate(
             "repeat_window_hours": 24,
         },
         "human_queue": {"claim_timeout_hours": 2, "max_failed_calls": 3},
+        "alerts": {
+            "window_hours": 24,
+            "max_human_share": 0.65,
+            "escalation_window_days": 7,
+            "max_escalation_rate": 0.15,
+            "min_tickets": 30,
+            "stuck_minutes": 5,
+        },
         "intents": {
             "age_limit": {  # FAQ con predefinida
                 "ticket_type": "account_and_personal_details",

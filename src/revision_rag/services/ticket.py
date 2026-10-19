@@ -1,3 +1,4 @@
+import logging
 import uuid
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -27,6 +28,8 @@ from revision_rag.tasks.queue import TaskQueue
 from revision_rag.triage.answers import CALL_TEMPLATE
 from revision_rag.triage.rules import Rules
 from revision_rag.triage.urgency import due_at, escalated_priority
+
+logger = logging.getLogger(__name__)
 
 CUSTOMER_ESCALATED = "customer escalated"
 
@@ -108,6 +111,10 @@ class TicketService:
         )
         # Ticket (con su key) y evento en un solo commit: nunca uno sin el otro.
         await self.session.commit()
+        logger.info(
+            "ticket_created",
+            extra={"ticket_id": ticket.id, "customer_id": customer_id},
+        )
 
         # Después del commit: el ticket ya existe pase lo que pase con el
         # procesado (y si este falla, el ticket acaba en la cola humana).
@@ -166,6 +173,7 @@ class TicketService:
         self._check_can_write(ticket)
         await self._escalate(ticket)
         await self.session.commit()
+        self._log_escalated(ticket, by="button")
         return ticket
 
     async def reply(self, ticket: Ticket, data: MessageCreate) -> Ticket:
@@ -184,7 +192,8 @@ class TicketService:
                 ticket_id=ticket.id, author=MessageAuthor.CUSTOMER, content=data.text
             )
         )
-        if ticket.status == TicketStatus.ANSWERED:
+        escalating = ticket.status == TicketStatus.ANSWERED
+        if escalating:
             await self._escalate(ticket)
         else:
             await self.events.add(
@@ -195,7 +204,29 @@ class TicketService:
                 )
             )
         await self.session.commit()
+        if escalating:
+            self._log_escalated(ticket, by="reply")
+        else:
+            logger.info(
+                "customer_replied",
+                extra={"ticket_id": ticket.id, "status": ticket.status},
+            )
         return ticket
+
+    @staticmethod
+    def _log_escalated(ticket: Ticket, *, by: str) -> None:
+        # route_reason dice qué respuesta no sirvió: con esto se calcula el %
+        # de escalados por intención (apartado 6 › Escalar).
+        logger.info(
+            "ticket_escalated",
+            extra={
+                "ticket_id": ticket.id,
+                "by": by,
+                "intent": ticket.intent,
+                "route_reason": ticket.route_reason,
+                "priority": ticket.priority,
+            },
+        )
 
     async def _lock(self, ticket_id: uuid.UUID) -> Ticket:
         # El dueño ya lo ha comprobado OwnedTicket; aquí se vuelve a leer con

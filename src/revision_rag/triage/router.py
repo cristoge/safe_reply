@@ -56,6 +56,14 @@ def summarize(probabilities: Mapping[str, float], rules: Rules) -> Prediction:
     return Prediction(intent, probabilities[intent], p_human)
 
 
+def min_confidence_for(
+    intent: str, rules: Rules, config: RouterConfig | None = None
+) -> float:
+    """El umbral de una intención: el propio solo puede ser más exigente."""
+    config = config or rules.router
+    return max(config.min_confidence, rules.intents[intent].min_confidence or 0)
+
+
 def decide_route(
     prediction: Prediction,
     text: str | None,
@@ -77,8 +85,7 @@ def decide_route(
     """
     config = config or rules.router
     rule = rules.intents[prediction.intent]
-    # El umbral propio de una intención solo puede ser más exigente.
-    intent_min = max(config.min_confidence, rule.min_confidence or 0)
+    intent_min = min_confidence_for(prediction.intent, rules, config)
     low_confidence = prediction.confidence < intent_min
 
     if text is not None and rules.sensitive.search(text):
