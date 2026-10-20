@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from revision_rag.models.enums import Route
-from revision_rag.triage.answers import unreachable_message
-from revision_rag.triage.rules import Rules
+from safe_reply.models.enums import Route
+from safe_reply.triage.answers import unreachable_message
+from safe_reply.triage.rules import Rules
 
 POLICIES = Path(__file__).parents[2] / "policies"
 CANNED_DIR = POLICIES / "canned"

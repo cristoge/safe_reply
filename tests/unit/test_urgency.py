@@ -2,8 +2,8 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from revision_rag.triage.rules import Rules
-from revision_rag.triage.urgency import due_at, escalated_priority, final_priority
+from safe_reply.triage.rules import Rules
+from safe_reply.triage.urgency import due_at, escalated_priority, final_priority
 
 
 @pytest.mark.parametrize(

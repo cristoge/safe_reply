@@ -7,7 +7,7 @@ import pytest
 from fakes import FakeClassifier
 from httpx import AsyncClient
 
-from revision_rag.core.logging import JsonFormatter
+from safe_reply.core.logging import JsonFormatter
 
 TICKETS_URL = "/api/v1/tickets"
 AGENT_URL = "/api/v1/agent"
@@ -22,7 +22,7 @@ def lines(caplog: pytest.LogCaptureFixture) -> list[dict]:
     return [
         json.loads(formatter.format(r))
         for r in caplog.records
-        if r.name.startswith("revision_rag")
+        if r.name.startswith("safe_reply")
     ]
 
 
@@ -33,7 +33,7 @@ async def test_a_ticket_leaves_one_event_per_step_and_no_personal_data(
     classifier: FakeClassifier,
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    caplog.set_level(logging.INFO, logger="revision_rag")
+    caplog.set_level(logging.INFO, logger="safe_reply")
     ticket_id = (
         await client.post(TICKETS_URL, json={"text": TEXT}, headers=auth_headers)
     ).json()["id"]
@@ -86,7 +86,7 @@ async def test_escalating_logs_which_answer_did_not_help(
     ticket_id = (
         await client.post(TICKETS_URL, json={"text": text}, headers=auth_headers)
     ).json()["id"]
-    caplog.set_level(logging.INFO, logger="revision_rag")
+    caplog.set_level(logging.INFO, logger="safe_reply")
 
     await client.post(f"{TICKETS_URL}/{ticket_id}/escalate", headers=auth_headers)
 
@@ -103,7 +103,7 @@ async def test_processing_errors_are_logged_with_the_traceback(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
     classifier.error = RuntimeError("model exploded")
-    caplog.set_level(logging.INFO, logger="revision_rag")
+    caplog.set_level(logging.INFO, logger="safe_reply")
 
     await client.post(TICKETS_URL, json={"text": TEXT}, headers=auth_headers)
 

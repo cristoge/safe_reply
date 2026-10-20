@@ -5,11 +5,11 @@ import logging
 import sys
 import uuid
 
-from revision_rag.core.logging import JsonFormatter
+from safe_reply.core.logging import JsonFormatter
 
 
 def record(**extra: object) -> logging.LogRecord:
-    logger = logging.getLogger("revision_rag.test")
+    logger = logging.getLogger("safe_reply.test")
     return logger.makeRecord(
         logger.name, logging.INFO, __file__, 1, "ticket_triaged", (), None, extra=extra
     )
@@ -34,7 +34,7 @@ def test_exceptions_go_in_the_same_line() -> None:
     try:
         raise ValueError("boom")
     except ValueError:
-        logger = logging.getLogger("revision_rag.test")
+        logger = logging.getLogger("safe_reply.test")
         rec = logger.makeRecord(
             logger.name, logging.ERROR, __file__, 1, "failed", (), sys.exc_info()
         )

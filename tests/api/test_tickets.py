@@ -7,16 +7,16 @@ from httpx import AsyncClient
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.core.config import get_settings
-from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
-from revision_rag.models.enums import (
+from safe_reply.core.config import get_settings
+from safe_reply.models import Ticket, TicketEvent, TicketMessage, User
+from safe_reply.models.enums import (
     MessageAuthor,
     MessageStatus,
     TicketEventType,
     TicketStatus,
 )
-from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
-from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
+from safe_reply.models.ticket import TICKET_TEXT_MAX_LENGTH
+from safe_reply.triage.answers import CALL_TEMPLATE, CannedAnswers
 
 TICKETS_URL = "/api/v1/tickets"
 TEXT = "My card hasn't arrived yet"

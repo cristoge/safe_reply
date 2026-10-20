@@ -13,13 +13,13 @@ from redis.asyncio import Redis
 from sqlalchemy import make_url, text
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 
-from revision_rag.api.deps import get_canned_answers, get_classifier, get_rules
-from revision_rag.core.config import Settings, get_settings
-from revision_rag.db.cache import build_redis, get_redis
-from revision_rag.db.session import get_db
-from revision_rag.main import app
-from revision_rag.triage.answers import CannedAnswers
-from revision_rag.triage.rules import Rules, load_rules
+from safe_reply.api.deps import get_canned_answers, get_classifier, get_rules
+from safe_reply.core.config import Settings, get_settings
+from safe_reply.db.cache import build_redis, get_redis
+from safe_reply.db.session import get_db
+from safe_reply.main import app
+from safe_reply.triage.answers import CannedAnswers
+from safe_reply.triage.rules import Rules, load_rules
 
 _settings = Settings()  # pyright: ignore[reportCallIssue]
 

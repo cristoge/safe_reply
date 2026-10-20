@@ -1,5 +1,5 @@
 [project]
-name = "revision-rag"
+name = "safe-reply"
 version = "0.1.0"
 description = "Tickets de soporte con IA para un banco digital ficticio: clasificar, decidir la ruta y responder sin LLM (v1)"
 readme = "README.md"
@@ -24,9 +24,6 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.1.3",
     "uvicorn[standard]>=0.54.0",
 ]
-
-[project.scripts]
-revision-rag = "revision_rag:main"
 
 [build-system]
 requires = ["uv_build>=0.12.23,<0.13.0"]

@@ -861,7 +861,7 @@ wheels = [
 ]
 
 [[package]]
-name = "revision-rag"
+name = "safe-reply"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

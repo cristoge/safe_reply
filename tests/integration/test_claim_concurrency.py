@@ -14,15 +14,15 @@ import pytest
 from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from revision_rag.models import Ticket, User
-from revision_rag.models.enums import TicketStatus, UserRole
-from revision_rag.repositories.ticket import TicketRepository
-from revision_rag.repositories.ticket_correction import TicketCorrectionRepository
-from revision_rag.repositories.ticket_event import TicketEventRepository
-from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.repositories.user import UserRepository
-from revision_rag.services.human_queue import HumanQueueService
-from revision_rag.triage.rules import Rules
+from safe_reply.models import Ticket, User
+from safe_reply.models.enums import TicketStatus, UserRole
+from safe_reply.repositories.ticket import TicketRepository
+from safe_reply.repositories.ticket_correction import TicketCorrectionRepository
+from safe_reply.repositories.ticket_event import TicketEventRepository
+from safe_reply.repositories.ticket_message import TicketMessageRepository
+from safe_reply.repositories.user import UserRepository
+from safe_reply.services.human_queue import HumanQueueService
+from safe_reply.triage.rules import Rules
 
 
 @pytest.fixture

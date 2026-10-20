@@ -16,11 +16,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import make_pipeline
 
-from revision_rag.clients.classifier import ClassifierLoadError, JoblibClassifier
-from revision_rag.core.config import get_settings
-from revision_rag.main import load_triage
-from revision_rag.triage.answers import CannedAnswersError
-from revision_rag.triage.rules import Rules
+from safe_reply.clients.classifier import ClassifierLoadError, JoblibClassifier
+from safe_reply.core.config import get_settings
+from safe_reply.main import load_triage
+from safe_reply.triage.answers import CannedAnswersError
+from safe_reply.triage.rules import Rules
 
 CANNED_DIR = Path(__file__).parents[2] / "policies" / "canned"
 

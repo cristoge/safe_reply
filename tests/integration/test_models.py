@@ -3,7 +3,7 @@ from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import User
+from safe_reply.models import User
 
 
 async def count(session: AsyncSession, model: type) -> int:

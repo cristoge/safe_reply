@@ -7,24 +7,24 @@ from fakes import FakeClassifier
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
-from revision_rag.models.enums import (
+from safe_reply.models import Ticket, TicketEvent, TicketMessage, User
+from safe_reply.models.enums import (
     MessageAuthor,
     Route,
     TicketEventType,
     TicketStatus,
 )
-from revision_rag.repositories.ticket import TicketRepository
-from revision_rag.repositories.ticket_event import TicketEventRepository
-from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.services.ticket_processor import (
+from safe_reply.repositories.ticket import TicketRepository
+from safe_reply.repositories.ticket_event import TicketEventRepository
+from safe_reply.repositories.ticket_message import TicketMessageRepository
+from safe_reply.services.ticket_processor import (
     PROCESSING_ERROR,
     TicketProcessor,
 )
-from revision_rag.triage import router
-from revision_rag.triage.answers import CALL_TEMPLATE, CannedAnswers
-from revision_rag.triage.pipeline import CANNED_RAG_DISABLED
-from revision_rag.triage.rules import Rules
+from safe_reply.triage import router
+from safe_reply.triage.answers import CALL_TEMPLATE, CannedAnswers
+from safe_reply.triage.pipeline import CANNED_RAG_DISABLED
+from safe_reply.triage.rules import Rules
 
 
 def make_processor(

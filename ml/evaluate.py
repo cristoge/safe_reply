@@ -31,19 +31,19 @@ import pandas as pd
 from common import DATA_DIR, ML_DIR, load_data, load_phrases
 from sklearn.metrics import accuracy_score, f1_score
 
-from revision_rag.clients.classifier import IntentClassifier
-from revision_rag.core.config import get_settings
-from revision_rag.main import load_triage
-from revision_rag.models.enums import Route
-from revision_rag.triage.answers import CannedAnswers
-from revision_rag.triage.pipeline import (
+from safe_reply.clients.classifier import IntentClassifier
+from safe_reply.core.config import get_settings
+from safe_reply.main import load_triage
+from safe_reply.models.enums import Route
+from safe_reply.triage.answers import CannedAnswers
+from safe_reply.triage.pipeline import (
     CANNED_RAG_DISABLED,
     TriageResult,
     triage_ticket,
 )
-from revision_rag.triage.router import CANNED_FAQ
-from revision_rag.triage.rules import Rules
-from revision_rag.triage.urgency import final_priority
+from safe_reply.triage.router import CANNED_FAQ
+from safe_reply.triage.rules import Rules
+from safe_reply.triage.urgency import final_priority
 
 RESULTS_PATH = ML_DIR / "results" / "evaluation.json"
 # Las dos opciones del S6 (apartado 3.5 del diseño): 0.8 responde más, 0.9 se

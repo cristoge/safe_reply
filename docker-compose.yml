@@ -1,7 +1,7 @@
 services:
   db:
     image: pgvector/pgvector:pg17
-    container_name: revision_rag_db
+    container_name: safe_reply_db
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -18,7 +18,7 @@ services:
 
   redis:
     image: redis:8-alpine
-    container_name: revision_rag_redis
+    container_name: safe_reply_redis
     ports:
       - "6379:6379"
     volumes:

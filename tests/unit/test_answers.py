@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from revision_rag.triage.answers import (
+from safe_reply.triage.answers import (
     CALL_TEMPLATE,
     CannedAnswers,
     unreachable_message,

@@ -1,4 +1,4 @@
-# rag_revision — tickets de soporte con IA para un banco digital
+# safe_reply — tickets de soporte con IA para un banco digital
 
 Un sistema de atención al cliente para un **banco digital ficticio**. Al llegar un ticket, decide en milisegundos **de qué trata, cuánto corre prisa y quién lo responde**: una respuesta predefinida revisada por una persona, o una llamada de un agente.
 
@@ -185,7 +185,7 @@ Todo bajo `/api/v1`. Documentación interactiva en `/docs`.
 ├── policies/
 │   ├── bank_facts.md           los datos del banco ficticio: la única fuente de cifras y rutas de la app
 │   └── canned/<intent>.md      una respuesta predefinida por intención de IA (57)
-├── src/revision_rag/           el backend
+├── src/safe_reply/           el backend
 │   ├── main.py                 la app: arranque (lifespan), routers y el handler de errores
 │   ├── api/
 │   │   ├── routes/             auth, users, tickets (cliente) y agent (cola humana)

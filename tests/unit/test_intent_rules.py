@@ -9,8 +9,8 @@ from pathlib import Path
 
 import pytest
 
-from revision_rag.models.enums import Route
-from revision_rag.triage.rules import Rules, load_rules
+from safe_reply.models.enums import Route
+from safe_reply.triage.rules import Rules, load_rules
 
 RULES_PATH = Path(__file__).parents[2] / "rules" / "intents.yaml"
 

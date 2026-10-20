@@ -6,11 +6,11 @@ from typing import Any
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import Ticket, User
-from revision_rag.models.enums import Route, TicketStatus
-from revision_rag.repositories.ticket_stats import TicketStatsRepository
-from revision_rag.services.alerts import AlertService
-from revision_rag.triage.rules import Rules
+from safe_reply.models import Ticket, User
+from safe_reply.models.enums import Route, TicketStatus
+from safe_reply.repositories.ticket_stats import TicketStatsRepository
+from safe_reply.services.alerts import AlertService
+from safe_reply.triage.rules import Rules
 
 NOW = datetime.now(UTC)
 

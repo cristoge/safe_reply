@@ -8,15 +8,15 @@ from redis.asyncio import Redis
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.core.exceptions import IdempotencyKeyReusedError
-from revision_rag.models import Ticket, User
-from revision_rag.repositories.ticket import TicketRepository
-from revision_rag.repositories.ticket_event import TicketEventRepository
-from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.schemas.ticket import TicketCreate
-from revision_rag.services.rate_limiter import RateLimiter
-from revision_rag.services.ticket import TicketService
-from revision_rag.triage.rules import Rules
+from safe_reply.core.exceptions import IdempotencyKeyReusedError
+from safe_reply.models import Ticket, User
+from safe_reply.repositories.ticket import TicketRepository
+from safe_reply.repositories.ticket_event import TicketEventRepository
+from safe_reply.repositories.ticket_message import TicketMessageRepository
+from safe_reply.schemas.ticket import TicketCreate
+from safe_reply.services.rate_limiter import RateLimiter
+from safe_reply.services.ticket import TicketService
+from safe_reply.triage.rules import Rules
 
 TEXT = "My card hasn't arrived yet"
 

@@ -4,8 +4,8 @@ import pytest
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import User
-from revision_rag.repositories.user import UserRepository
+from safe_reply.models import User
+from safe_reply.repositories.user import UserRepository
 
 
 @pytest.fixture

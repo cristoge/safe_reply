@@ -10,11 +10,11 @@ import asyncio
 import sys
 from datetime import UTC, datetime
 
-from revision_rag.core.config import get_settings
-from revision_rag.db.session import build_engine, build_sessionmaker
-from revision_rag.repositories.ticket_stats import TicketStatsRepository
-from revision_rag.services.alerts import AlertReport, AlertService
-from revision_rag.triage.rules import load_rules
+from safe_reply.core.config import get_settings
+from safe_reply.db.session import build_engine, build_sessionmaker
+from safe_reply.repositories.ticket_stats import TicketStatsRepository
+from safe_reply.services.alerts import AlertReport, AlertService
+from safe_reply.triage.rules import load_rules
 
 
 async def check() -> AlertReport:

@@ -1,7 +1,7 @@
 import pytest
 from pydantic import ValidationError
 
-from revision_rag.schemas.user import UserCreate
+from safe_reply.schemas.user import UserCreate
 
 
 def make_user(phone: str) -> UserCreate:

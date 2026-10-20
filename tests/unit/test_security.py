@@ -4,7 +4,7 @@ from datetime import UTC, datetime, timedelta
 import jwt
 import pytest
 
-from revision_rag.core.security import (
+from safe_reply.core.security import (
     create_access_token,
     decode_access_token,
     generate_refresh_token,

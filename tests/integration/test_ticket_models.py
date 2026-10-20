@@ -11,14 +11,14 @@ from sqlalchemy import delete, func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import (
+from safe_reply.models import (
     Ticket,
     TicketCorrection,
     TicketEvent,
     TicketMessage,
     User,
 )
-from revision_rag.models.enums import (
+from safe_reply.models.enums import (
     MessageAuthor,
     MessageStatus,
     Route,
@@ -26,7 +26,7 @@ from revision_rag.models.enums import (
     TicketStatus,
     UserRole,
 )
-from revision_rag.models.ticket import TICKET_TEXT_MAX_LENGTH
+from safe_reply.models.ticket import TICKET_TEXT_MAX_LENGTH
 
 
 async def count(session: AsyncSession, model: type) -> int:

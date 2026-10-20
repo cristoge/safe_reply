@@ -8,7 +8,7 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from revision_rag.triage.rules import load_rules
+from safe_reply.triage.rules import load_rules
 
 VALID: dict[str, Any] = {
     "router": {"min_confidence": 0.8, "max_p_human": 0.1, "canned_min_confidence": 0.9},

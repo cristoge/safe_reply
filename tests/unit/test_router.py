@@ -6,9 +6,9 @@ cambia una regla de negocio, solo si cambia cómo decide el router.
 
 import pytest
 
-from revision_rag.triage import router
-from revision_rag.triage.router import Destination, Prediction, decide_route, summarize
-from revision_rag.triage.rules import RouterConfig, Rules
+from safe_reply.triage import router
+from safe_reply.triage.router import Destination, Prediction, decide_route, summarize
+from safe_reply.triage.rules import RouterConfig, Rules
 
 RULES = Rules.model_validate(
     {

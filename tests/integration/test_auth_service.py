@@ -3,21 +3,21 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.core.config import get_settings
-from revision_rag.core.exceptions import (
+from safe_reply.core.config import get_settings
+from safe_reply.core.exceptions import (
     EmailAlreadyRegisteredError,
     InvalidCredentialsError,
     InvalidRefreshTokenError,
     NotAuthenticatedError,
 )
-from revision_rag.core.security import hash_refresh_token, verify_password
-from revision_rag.models import User
-from revision_rag.models.enums import UserRole
-from revision_rag.repositories.refresh_token import RefreshTokenRepository
-from revision_rag.repositories.user import UserRepository
-from revision_rag.schemas.auth import LoginRequest
-from revision_rag.schemas.user import AgentCreate, UserCreate
-from revision_rag.services.auth import AuthService
+from safe_reply.core.security import hash_refresh_token, verify_password
+from safe_reply.models import User
+from safe_reply.models.enums import UserRole
+from safe_reply.repositories.refresh_token import RefreshTokenRepository
+from safe_reply.repositories.user import UserRepository
+from safe_reply.schemas.auth import LoginRequest
+from safe_reply.schemas.user import AgentCreate, UserCreate
+from safe_reply.services.auth import AuthService
 
 PHONE = "+34600123456"
 LOGIN = LoginRequest(email="cristo@test.com", password="contraseña123")

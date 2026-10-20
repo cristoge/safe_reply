@@ -2,9 +2,9 @@ import pytest
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.core.security import hash_password
-from revision_rag.models import User
-from revision_rag.models.enums import UserRole
+from safe_reply.core.security import hash_password
+from safe_reply.models import User
+from safe_reply.models.enums import UserRole
 
 PASSWORD = "contraseña123"
 PHONE = "+34600123456"

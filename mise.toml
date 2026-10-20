@@ -19,7 +19,7 @@ run = "docker compose down"
 description = "Arranca la API con recarga automática (levanta Docker antes)"
 # Sin Postgres y Redis la app no arranca (fail fast en el lifespan).
 depends = ["docker:up"]
-run = "uv run uvicorn revision_rag.main:app --reload"
+run = "uv run uvicorn safe_reply.main:app --reload"
 
 [tasks."agent:create"]
 description = "Crea un agente de soporte (pide la contraseña). Uso: mise run agent:create -- email --name Nombre"

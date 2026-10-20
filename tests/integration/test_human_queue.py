@@ -6,32 +6,32 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.core.exceptions import (
+from safe_reply.core.exceptions import (
     ResolutionReasonRequiredError,
     TicketNotAssignedError,
     TicketStateConflictError,
     UnknownIntentError,
 )
-from revision_rag.models import Ticket, TicketEvent, TicketMessage, User
-from revision_rag.models.enums import (
+from safe_reply.models import Ticket, TicketEvent, TicketMessage, User
+from safe_reply.models.enums import (
     MessageAuthor,
     Route,
     TicketEventType,
     TicketStatus,
     UserRole,
 )
-from revision_rag.repositories.ticket import TicketRepository
-from revision_rag.repositories.ticket_correction import TicketCorrectionRepository
-from revision_rag.repositories.ticket_event import TicketEventRepository
-from revision_rag.repositories.ticket_message import TicketMessageRepository
-from revision_rag.repositories.user import UserRepository
-from revision_rag.schemas.agent import CorrectionCreate
-from revision_rag.services.human_queue import (
+from safe_reply.repositories.ticket import TicketRepository
+from safe_reply.repositories.ticket_correction import TicketCorrectionRepository
+from safe_reply.repositories.ticket_event import TicketEventRepository
+from safe_reply.repositories.ticket_message import TicketMessageRepository
+from safe_reply.repositories.user import UserRepository
+from safe_reply.schemas.agent import CorrectionCreate
+from safe_reply.services.human_queue import (
     CUSTOMER_UNREACHABLE,
     HumanQueueService,
 )
-from revision_rag.triage.answers import unreachable_message
-from revision_rag.triage.rules import Rules
+from safe_reply.triage.answers import unreachable_message
+from safe_reply.triage.rules import Rules
 
 
 @pytest.fixture

@@ -1,7 +1,7 @@
 import pytest
 from httpx import AsyncClient
 
-from revision_rag.core.config import get_settings
+from safe_reply.core.config import get_settings
 
 REGISTER_URL = "/api/v1/auth/register"
 PHONE = "+34600123456"

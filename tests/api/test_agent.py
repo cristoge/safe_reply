@@ -7,10 +7,10 @@ from fakes import FakeClassifier
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from revision_rag.models import TicketMessage
-from revision_rag.models.enums import MessageAuthor, MessageStatus
-from revision_rag.triage.answers import CALL_TEMPLATE
-from revision_rag.triage.rules import Rules
+from safe_reply.models import TicketMessage
+from safe_reply.models.enums import MessageAuthor, MessageStatus
+from safe_reply.triage.answers import CALL_TEMPLATE
+from safe_reply.triage.rules import Rules
 
 TICKETS_URL = "/api/v1/tickets"
 AGENT_URL = "/api/v1/agent"

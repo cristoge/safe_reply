@@ -6,10 +6,10 @@ de require_customer por HTTP se prueba en tests/api/test_tickets.py.
 
 import pytest
 
-from revision_rag.api.deps import require_agent, require_customer
-from revision_rag.core.exceptions import ForbiddenError
-from revision_rag.models import User
-from revision_rag.models.enums import UserRole
+from safe_reply.api.deps import require_agent, require_customer
+from safe_reply.core.exceptions import ForbiddenError
+from safe_reply.models import User
+from safe_reply.models.enums import UserRole
 
 CUSTOMER = User(email="cliente@test.com", hashed_password="x", role=UserRole.CUSTOMER)
 AGENT = User(email="agente@test.com", hashed_password="x", role=UserRole.AGENT)

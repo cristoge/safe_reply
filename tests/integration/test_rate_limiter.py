@@ -3,8 +3,8 @@
 import pytest
 from redis.asyncio import Redis
 
-from revision_rag.core.exceptions import RateLimitExceededError
-from revision_rag.services.rate_limiter import RateLimiter
+from safe_reply.core.exceptions import RateLimitExceededError
+from safe_reply.services.rate_limiter import RateLimiter
 
 
 async def test_rate_limiter_allows_up_to_the_limit(redis: Redis) -> None:

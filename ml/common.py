@@ -1,6 +1,6 @@
 """Lo que comparten los scripts de ml/: datos, modelo definitivo, reglas y router.
 
-Las reglas y el router no se definen aquí: son los del backend (revision_rag.triage).
+Las reglas y el router no se definen aquí: son los del backend (safe_reply.triage).
 """
 
 from collections.abc import Sequence
@@ -12,8 +12,8 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline, make_pipeline
 
-from revision_rag.triage.router import Destination, decide_route, summarize
-from revision_rag.triage.rules import IntentRule, RouterConfig, Rules, load_rules
+from safe_reply.triage.router import Destination, decide_route, summarize
+from safe_reply.triage.rules import IntentRule, RouterConfig, Rules, load_rules
 
 ML_DIR = Path(__file__).parent
 DATA_DIR = ML_DIR / "data" / "banking77"
@@ -48,7 +48,7 @@ def build_model() -> Pipeline:
     )
 
 
-# --- Reglas de negocio y router: los del backend (src/revision_rag/triage) ----
+# --- Reglas de negocio y router: los del backend (src/safe_reply/triage) ----
 # No hay una copia aquí: lo que se mide es exactamente lo que responde a los
 # clientes. Si cambia una regla, cambia para los dos.
 

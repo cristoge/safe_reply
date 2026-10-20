@@ -14,13 +14,13 @@ import sys
 
 from pydantic import ValidationError
 
-from revision_rag.core.config import get_settings
-from revision_rag.core.exceptions import EmailAlreadyRegisteredError
-from revision_rag.db.session import build_engine, build_sessionmaker
-from revision_rag.repositories.refresh_token import RefreshTokenRepository
-from revision_rag.repositories.user import UserRepository
-from revision_rag.schemas.user import AgentCreate
-from revision_rag.services.auth import AuthService
+from safe_reply.core.config import get_settings
+from safe_reply.core.exceptions import EmailAlreadyRegisteredError
+from safe_reply.db.session import build_engine, build_sessionmaker
+from safe_reply.repositories.refresh_token import RefreshTokenRepository
+from safe_reply.repositories.user import UserRepository
+from safe_reply.schemas.user import AgentCreate
+from safe_reply.services.auth import AuthService
 
 
 async def create_agent(data: AgentCreate) -> None:

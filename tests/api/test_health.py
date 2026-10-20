@@ -4,9 +4,9 @@ from httpx import AsyncClient
 from redis.asyncio import Redis
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 
-from revision_rag.db.cache import build_redis, get_redis
-from revision_rag.db.session import get_db
-from revision_rag.main import app
+from safe_reply.db.cache import build_redis, get_redis
+from safe_reply.db.session import get_db
+from safe_reply.main import app
 
 
 async def test_health_returns_ok_when_everything_is_up(client: AsyncClient) -> None:

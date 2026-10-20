@@ -2,8 +2,8 @@ import pytest
 from fastapi import FastAPI
 from httpx import ASGITransport, AsyncClient
 
-from revision_rag.core.config import get_settings
-from revision_rag.main import include_routers
+from safe_reply.core.config import get_settings
+from safe_reply.main import include_routers
 
 USERS_URL = "/api/v1/users"
 ME_URL = "/api/v1/users/me"
