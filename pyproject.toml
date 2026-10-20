@@ -1,7 +1,7 @@
 [project]
 name = "revision-rag"
 version = "0.1.0"
-description = "Add your description here"
+description = "Tickets de soporte con IA para un banco digital ficticio: clasificar, decidir la ruta y responder sin LLM (v1)"
 readme = "README.md"
 authors = [
     { name = "cristoge", email = "cristo.g@outlook.es" }
